@@ -1,0 +1,264 @@
+@host = http://localhost:5222
+@api = {{host}}/api/v1
+
+### Register (also signs in)
+# @name register
+POST {{api}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "jane@example.com",
+  "passphrase": "correct-horse-battery-staple",
+  "confirmPassphrase": "correct-horse-battery-staple"
+}
+
+### Log in
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "jane@example.com",
+  "passphrase": "correct-horse-battery-staple"
+}
+
+@token = {{login.response.body.accessToken}}
+@refreshToken = {{login.response.body.refreshToken}}
+
+### Current user
+GET {{api}}/auth/me
+Authorization: Bearer {{token}}
+
+### Rotate the token pair (the submitted refresh token is single-use)
+POST {{api}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### Active sessions
+GET {{api}}/auth/sessions
+Authorization: Bearer {{token}}
+
+### Change passphrase (signs out every other device)
+POST {{api}}/auth/change-passphrase
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "currentPassphrase": "correct-horse-battery-staple",
+  "newPassphrase": "a-different-long-passphrase",
+  "confirmNewPassphrase": "a-different-long-passphrase"
+}
+
+### Request 6-digit OTP for Password Change/Reset
+# @name sendPasswordOtp
+POST {{api}}/auth/password/send-otp
+Content-Type: application/json
+
+{
+  "email": "jane@example.com"
+}
+
+### Change Password using the emailed OTP
+# @name changePasswordWithOtp
+POST {{api}}/auth/password/change-with-otp
+Content-Type: application/json
+
+{
+  "email": "jane@example.com",
+  "otp": "123456",
+  "newPassphrase": "a-new-secure-passphrase-2026",
+  "confirmNewPassphrase": "a-new-secure-passphrase-2026"
+}
+
+### Log out of this session
+POST {{api}}/auth/logout
+Authorization: Bearer {{token}}
+
+### Log out everywhere
+POST {{api}}/auth/logout-all
+Authorization: Bearer {{token}}
+
+
+# ============================ PRODUCT TREE ============================
+
+### The whole Category -> SubCategory hierarchy with product counts
+GET {{api}}/product-tree
+Authorization: Bearer {{token}}
+
+### Include inactive nodes (admin view)
+GET {{api}}/product-tree?activeOnly=false
+Authorization: Bearer {{token}}
+
+
+# ============================ CATEGORIES ==============================
+
+### Create a category
+# @name createCategory
+POST {{api}}/categories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "categoryCode": "ELEC",
+  "categoryName": "Electronics",
+  "description": "Devices and gadgets",
+  "isActive": true
+}
+
+@categoryId = {{createCategory.response.body.categoryId}}
+
+### List categories (paged, searchable)
+GET {{api}}/categories?search=elec&page=1&pageSize=25
+Authorization: Bearer {{token}}
+
+### One category, with its images
+GET {{api}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+
+### Update a category
+PUT {{api}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "categoryCode": "ELEC",
+  "categoryName": "Consumer Electronics",
+  "description": "Devices and gadgets",
+  "isActive": true
+}
+
+### Delete (409 while it still has sub-categories or products)
+DELETE {{api}}/categories/{{categoryId}}
+Authorization: Bearer {{token}}
+
+
+# ========================= CATEGORY IMAGES ============================
+
+### Add image metadata. The first image added becomes primary.
+# @name addImage
+POST {{api}}/categories/{{categoryId}}/images
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "imageUrl": "https://cdn.example.com/elec.jpg",
+  "fileName": "elec.jpg",
+  "filePath": "/images/categories/elec.jpg",
+  "contentType": "image/jpeg",
+  "fileSize": 154823,
+  "isPrimary": true
+}
+
+@imageId = {{addImage.response.body.categoryImageId}}
+
+### List a category's images
+GET {{api}}/categories/{{categoryId}}/images
+Authorization: Bearer {{token}}
+
+### Promote to primary (demotes the incumbent)
+POST {{api}}/category-images/{{imageId}}/primary
+Authorization: Bearer {{token}}
+
+### Delete (promotes the next image if this was primary)
+DELETE {{api}}/category-images/{{imageId}}
+Authorization: Bearer {{token}}
+
+
+# =========================== SUBCATEGORIES ============================
+
+### Create a sub-category (flips the parent's hasSubCategory)
+# @name createSubCategory
+POST {{api}}/subcategories
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "categoryId": "{{categoryId}}",
+  "subCategoryCode": "PHONE",
+  "subCategoryName": "Mobile Phones",
+  "isActive": true
+}
+
+@subCategoryId = {{createSubCategory.response.body.subCategoryId}}
+
+### List, scoped to one category
+GET {{api}}/subcategories?categoryId={{categoryId}}&page=1&pageSize=25
+Authorization: Bearer {{token}}
+
+### Update
+PUT {{api}}/subcategories/{{subCategoryId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "subCategoryCode": "PHONE",
+  "subCategoryName": "Smartphones",
+  "isActive": true
+}
+
+### Delete (409 while it still has products)
+DELETE {{api}}/subcategories/{{subCategoryId}}
+Authorization: Bearer {{token}}
+
+
+# ============================= PRODUCTS ===============================
+
+### Create a product
+# @name createProduct
+POST {{api}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "productCode": "P-1001",
+  "skuCode": "SKU-1001",
+  "barcode": "8901234567890",
+  "productName": "Pixel 9 Pro",
+  "categoryId": "{{categoryId}}",
+  "subCategoryId": "{{subCategoryId}}",
+  "hsnCode": "8517",
+  "gstPercentage": 18,
+  "description": "Flagship handset",
+  "unit": "pcs",
+  "mrp": 109999.00,
+  "dealerPrice": 95000.50,
+  "distributorPrice": 92000.00,
+  "retailerPrice": 99999.99,
+  "purchasePrice": 88000.00,
+  "minimumOrderQty": 1,
+  "maximumOrderQty": 10,
+  "openingStock": 50,
+  "status": "Active",
+  "taxIncluded": true,
+  "stockActive": true
+}
+
+@productId = {{createProduct.response.body.productId}}
+
+### Walk down from the tree into the leaves
+GET {{api}}/products?subCategoryId={{subCategoryId}}&page=1&pageSize=25
+Authorization: Bearer {{token}}
+
+### Search, filter and sort
+GET {{api}}/products?search=pixel&status=Active&minPrice=1000&sortBy=price&sortDescending=true
+Authorization: Bearer {{token}}
+
+### One product
+GET {{api}}/products/{{productId}}
+Authorization: Bearer {{token}}
+
+### Delete
+DELETE {{api}}/products/{{productId}}
+Authorization: Bearer {{token}}
+
+
+# ============================== HEALTH ================================
+
+### Liveness
+GET {{host}}/health/live
+
+### Readiness (checks the database)
+GET {{host}}/health/ready
