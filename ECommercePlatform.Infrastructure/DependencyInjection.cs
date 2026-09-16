@@ -101,7 +101,7 @@ public static class DependencyInjection
         services.AddScoped<IWarehouseRepository, WarehouseRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
 
-        services.AddScoped<IFileStorageService, LocalFileStorageService>();
+services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<IPermissionService, PermissionService>();
 
         services.AddSingleton<IPassphraseHasher, PassphraseHasher>();

@@ -1,6 +1,7 @@
 using ECommercePlatform.Api.Configuration;
 using ECommercePlatform.Api.Extensions;
 using ECommercePlatform.Application;
+using ECommercePlatform.Application.BulkImport;
 using ECommercePlatform.Infrastructure;
 using ECommercePlatform.Infrastructure.Services;
 using System.Net;
@@ -28,6 +29,8 @@ try
         .AddApiServices(builder.Configuration)
         .AddApplication(builder.Configuration)
         .AddInfrastructure(builder.Configuration, builder.Environment);
+
+builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 
     builder.Services
         .AddJwtAuthentication()
