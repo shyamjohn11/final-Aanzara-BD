@@ -4,6 +4,7 @@ using ECommercePlatform.Application;
 using ECommercePlatform.Application.BulkImport;
 using ECommercePlatform.Infrastructure;
 using ECommercePlatform.Infrastructure.Services;
+using OfficeOpenXml;
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -13,6 +14,8 @@ using Serilog;
 // A bootstrap logger captures failures that happen before the real Serilog
 // pipeline is configured — otherwise a bad connection string or missing signing
 // key produces a silent crash.
+
+ExcelPackage.LicenseContext = LicenseContext.Commercial;
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateBootstrapLogger();

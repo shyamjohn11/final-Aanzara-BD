@@ -9,6 +9,9 @@ public sealed record ExcelProductRowDto
     public string? Brand { get; set; }
     public string? Description { get; set; }
     public decimal Price { get; set; }
+    public decimal Mrp { get; set; }
+    public decimal Discount { get; set; }
+    public int Moq { get; set; }
     public decimal GstPercentage { get; set; }
     public int Stock { get; set; }
     public string Status { get; set; } = "Active";

@@ -1,5 +1,6 @@
 using ECommercePlatform.Api.Common;
 using ECommercePlatform.Api.Extensions;
+using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
 using ECommercePlatform.Application.Common.Security;
 using ECommercePlatform.Application.Features.Auth;
@@ -12,6 +13,8 @@ using ECommercePlatform.Application.Features.Auth.Commands.RefreshToken;
 using ECommercePlatform.Application.Features.Auth.Commands.Register;
 using ECommercePlatform.Application.Features.Auth.Commands.RevokeSession;
 using ECommercePlatform.Application.Features.Auth.Commands.SendPasswordOtp;
+using ECommercePlatform.Application.Features.Auth.Commands.UpdateProfile;
+using ECommercePlatform.Application.Features.Auth.Commands.UploadAvatar;
 using ECommercePlatform.Application.Features.Auth.Dtos;
 using ECommercePlatform.Application.Features.Auth.Queries.GetActiveSessions;
 using ECommercePlatform.Application.Features.Auth.Queries.GetProfile;
@@ -198,6 +201,75 @@ public sealed class AuthController : ApiControllerBase
         finally
         {
             _logger.LogInformation("Me action finished.");
+        }
+    }
+
+    /// <summary>Updates the signed-in user's own profile (name, phone, date of birth, gender).</summary>
+    [HttpPut("me")]
+    [ProducesResponseType(typeof(UserProfileResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<UserProfileResponse>> UpdateMe(
+        [FromBody] UpdateProfileCommand command, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("UpdateMe action started.");
+
+        try
+        {
+            if (_currentUser.UserId is not { } userId)
+            {
+                return ToProblem(AuthErrors.InvalidCredentials);
+            }
+
+            // Identity is overwritten from the token so a caller cannot update
+            // someone else's profile.
+            var result = await Sender.Send(command with { UserId = userId }, cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("UpdateMe action finished.");
+        }
+    }
+
+    /// <summary>Uploads the signed-in user's avatar image (JPG/PNG/WEBP, max 2 MB).</summary>
+    [HttpPost("me/avatar")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(AvatarResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<AvatarResponse>> UploadAvatar(
+        IFormFile file, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("UploadAvatar action started.");
+
+        try
+        {
+            if (_currentUser.UserId is not { } userId)
+            {
+                return ToProblem(AuthErrors.InvalidCredentials);
+            }
+
+            var result = await Sender.Send(
+                new UploadAvatarCommand
+                {
+                    UserId = userId,
+                    File = file is null
+                        ? null
+                        : new FileUpload(
+                            file.OpenReadStream(),
+                            file.FileName,
+                            string.IsNullOrWhiteSpace(file.ContentType)
+                                ? "application/octet-stream"
+                                : file.ContentType,
+                            file.Length),
+                },
+                cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("UploadAvatar action finished.");
         }
     }
 

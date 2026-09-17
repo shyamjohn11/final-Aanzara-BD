@@ -38,6 +38,16 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Phone)
             .HasMaxLength(20);
 
+        // Profile extended fields (migration AddProfileExtendedFields).
+        // Lengths must stay in sync with the migration/snapshot column types
+        // (nvarchar(500)/nvarchar(30)); otherwise EF reports pending model
+        // changes and DatabaseInitializer.MigrateAsync throws at start-up.
+        builder.Property(u => u.AvatarUrl)
+            .HasMaxLength(500);
+
+        builder.Property(u => u.Gender)
+            .HasMaxLength(30);
+
         builder.Property(u => u.HashedPassphrase)
             .HasMaxLength(255)
             .IsRequired();

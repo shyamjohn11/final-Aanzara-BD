@@ -4,6 +4,9 @@ public sealed record UserProfileResponse
     public string Name { get; init; } = string.Empty;
     public string Email { get; init; } = string.Empty;
     public string? Phone { get; init; }
+    public string? AvatarUrl { get; init; }
+    public DateTimeOffset? DateOfBirth { get; init; }
+    public string? Gender { get; init; }
     public string Status { get; init; } = string.Empty;
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }

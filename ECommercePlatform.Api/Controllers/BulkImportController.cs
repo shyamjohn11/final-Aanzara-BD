@@ -67,6 +67,24 @@ public sealed class BulkImportController : ApiControllerBase
     }
 
     /// <summary>
+    /// Export every product to an Excel file (same columns as the template)
+    /// </summary>
+    [HttpGet("bulk-import/export")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> ExportAsync(CancellationToken cancellationToken)
+    {
+        var fileBytes = await _bulkImportService.ExportAsync(cancellationToken);
+
+        return File(
+            fileBytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"ProductsExport-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx"
+        );
+    }
+
+    /// <summary>
     /// Bulk import products from Excel file
     /// </summary>
     [HttpPost("bulk-import")]
@@ -74,7 +92,8 @@ public sealed class BulkImportController : ApiControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<ProductImportResultDto>> ImportAsync([FromForm] IFormFile file)
+    public async Task<ActionResult<ProductImportResultDto>> ImportAsync(
+        [FromForm] IFormFile file, CancellationToken cancellationToken)
     {
         if (file == null || file.Length == 0)
         {
@@ -93,9 +112,9 @@ public sealed class BulkImportController : ApiControllerBase
         }
 
         using var stream = new MemoryStream();
-        await file.CopyToAsync(stream, CancellationToken.None);
+        await file.CopyToAsync(stream, cancellationToken);
 
-        var result = await _bulkImportService.ImportAsync(stream);
+        var result = await _bulkImportService.ImportAsync(stream, cancellationToken);
 
         return Ok(result);
     }

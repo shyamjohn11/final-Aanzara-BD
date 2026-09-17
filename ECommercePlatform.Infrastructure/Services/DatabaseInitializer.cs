@@ -1,6 +1,7 @@
 using ECommercePlatform.Domain.Constants;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,6 +31,35 @@ public sealed class DatabaseInitializer
 
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
+        // SQL Server may still be starting (e.g. right after boot): retry
+        // transient connection failures instead of crashing the API with
+        // exit code 1 on the first attempt. Only SqlException is retried —
+        // anything else (bad migration, model mismatch, ...) still fails
+        // fast so real problems stay loud.
+        const int maxAttempts = 6;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await ApplyPendingMigrationsAsync(cancellationToken);
+                break;
+            }
+            catch (SqlException ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Database unreachable (attempt {Attempt}/{MaxAttempts}). Retrying in 5 seconds...",
+                    attempt,
+                    maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+        }
+
+        await SeedPermissionsAsync(cancellationToken);
+    }
+
+    private async Task ApplyPendingMigrationsAsync(CancellationToken cancellationToken)
+    {
         var pending = (await _db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
 
         if (pending.Count == 0)
@@ -45,8 +75,6 @@ public sealed class DatabaseInitializer
 
             _logger.LogInformation("Migrations applied.");
         }
-
-        await SeedPermissionsAsync(cancellationToken);
     }
 
     /// <summary>
