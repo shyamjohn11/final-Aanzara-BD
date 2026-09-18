@@ -48,7 +48,8 @@ public sealed class GetLowStockProductsQueryHandler
             .Select(g => (
                 product: g.First().Product,
                 available: g.Sum(i => i.StockQuantity - i.ReservedQuantity)))
-            .Where(x => x.product.Status == ProductStatus.Active && x.available > 0)
+            .Where(x => string.Equals(x.product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase)
+                && x.available > 0)
             .OrderBy(x => x.available)
             .Take(request.Count)
             .Select(x => x.product)

@@ -8,7 +8,9 @@ using ECommercePlatform.Application.Features.Warehouses.Dtos;
 using ECommercePlatform.Application.Features.Warehouses.GetWarehouseById;
 using ECommercePlatform.Application.Features.Warehouses.GetWarehouses;
 using ECommercePlatform.Application.Features.Warehouses.UpdateWarehouse;
+using ECommercePlatform.Application.Features.Warehouses.UpdateWarehouseStatus;
 using ECommercePlatform.Domain.Constants;
+using ECommercePlatform.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -141,6 +143,39 @@ public sealed class AdminWarehousesController : ApiControllerBase
         finally
         {
             _logger.LogInformation("Update warehouse action finished.");
+        }
+    }
+
+    public sealed record UpdateWarehouseStatusRequest(string Status);
+
+    /// <summary>Activates/deactivates a warehouse by ID.</summary>
+    [HttpPatch("{warehouseId:guid}/status")]
+    [HasPermission(Permissions.Warehouse.Update)]
+    [ProducesResponseType(typeof(WarehouseResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<WarehouseResponse>> UpdateStatus(
+        Guid warehouseId,
+        [FromBody] UpdateWarehouseStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Update warehouse status action started.");
+
+        try
+        {
+            if (!Enum.TryParse<WarehouseStatus>(request.Status, ignoreCase: true, out var status))
+            {
+                return BadRequest($"Unknown status '{request.Status}'. Expected 'Active' or 'Inactive'.");
+            }
+
+            var result = await Sender.Send(
+                new UpdateWarehouseStatusCommand(warehouseId, status), cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("Update warehouse status action finished.");
         }
     }
 

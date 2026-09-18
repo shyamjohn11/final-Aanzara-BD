@@ -29,7 +29,9 @@ public sealed class AddToWishlistCommandHandler : ICommandHandler<AddToWishlistC
             return Result.Failure(CatalogErrors.ProductNotFound);
         }
 
-        if (product.Status != ProductStatus.Active)
+        // Status is free text in the schema, so rows can differ in casing (older
+        // imports wrote "active") — compare case-insensitively like ProductStatus.IsValid.
+        if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
         {
             return Result.Failure(WishlistErrors.ProductUnavailable);
         }

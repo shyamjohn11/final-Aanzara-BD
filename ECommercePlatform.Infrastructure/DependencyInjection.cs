@@ -119,6 +119,7 @@ services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<IDeliveryRuleRepository, DeliveryRuleRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IAddressRepository, AddressRepository>();
+        services.AddScoped<IAgentRepository, AgentRepository>();
 
         services.AddHealthChecks()
             .AddDbContextCheck<ApplicationDbContext>(name: "database", tags: ["ready"]);

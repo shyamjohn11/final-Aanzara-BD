@@ -81,6 +81,8 @@ public sealed record UpdateCouponCommand : ICommand<Result<CouponAdminResponse>>
 
 public sealed record DeleteCouponCommand(Guid Id) : ICommand<Result>;
 
+public sealed record UpdateCouponStatusCommand(Guid Id, string Status) : ICommand<Result<CouponAdminResponse>>;
+
 internal static class CouponAdminSeeds
 {
     internal static void Ensure()
@@ -221,5 +223,23 @@ public sealed class DeleteCouponCommandHandler : IRequestHandler<DeleteCouponCom
         }
 
         return Task.FromResult(Result.Success());
+    }
+}
+
+public sealed class UpdateCouponStatusCommandHandler
+    : IRequestHandler<UpdateCouponStatusCommand, Result<CouponAdminResponse>>
+{
+    public Task<Result<CouponAdminResponse>> Handle(
+        UpdateCouponStatusCommand request, CancellationToken cancellationToken)
+    {
+        CouponAdminSeeds.Ensure();
+        if (!AdminCrudStore<CouponAdminResponse>.TryGet(request.Id, out var existing) || existing is null)
+        {
+            return Task.FromResult(Result.Failure<CouponAdminResponse>(AdminErrors.NotFound("Coupon", request.Id)));
+        }
+
+        var updated = existing with { Status = request.Status, UpdatedAt = DateTimeOffset.UtcNow };
+        AdminCrudStore<CouponAdminResponse>.Put(updated);
+        return Task.FromResult(Result.Success(updated));
     }
 }

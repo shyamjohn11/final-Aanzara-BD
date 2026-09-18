@@ -5,6 +5,7 @@ using ECommercePlatform.Domain.Enums;
 
 using ECommercePlatform.Domain.Errors;
 using ECommercePlatform.Domain.Entities;
+using Microsoft.Extensions.Logging;
 namespace ECommercePlatform.Application.Features.Orders.ConfirmOrderPayment;
 
 /// <summary>
@@ -15,7 +16,9 @@ public sealed class ConfirmOrderPaymentCommandHandler(
     IOrderRepository orders,
     IAdminRepository<Notification> notifications,
     IUnitOfWork unitOfWork,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IEmailService emailService,
+    ILogger<ConfirmOrderPaymentCommandHandler> logger)
     : ICommandHandler<ConfirmOrderPaymentCommand, Result<OrderDetailResponse>>
 {
     public async Task<Result<OrderDetailResponse>> Handle(
@@ -64,6 +67,20 @@ public sealed class ConfirmOrderPaymentCommandHandler(
                 "/admin/orders");
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            // Best-effort user email; failure must never fail confirmation.
+            await OrderEmailSender.TrySendAsync(
+                emailService,
+                logger,
+                order.User?.Email,
+                $"Payment confirmed for order {OrderMappings.OrderNoFor(order)}",
+                OrderEmailSender.PaymentConfirmedHtml(
+                    order.User?.Name ?? "Customer",
+                    OrderMappings.OrderNoFor(order),
+                    payment.Amount,
+                    payment.PaymentMethod.ToString(),
+                    request.TransactionReference),
+                cancellationToken);
         }
 
         return Result.Success(OrderMappings.ToDetail(order));

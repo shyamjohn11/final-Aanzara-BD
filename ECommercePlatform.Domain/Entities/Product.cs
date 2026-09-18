@@ -17,6 +17,14 @@ public class Product : AuditableEntity
 
     public Guid? BrandId { get; set; }
 
+    /// <summary>
+    /// Owning dealer/shop. Null for legacy and global catalog products;
+    /// never required so existing data and purchasing keep working.
+    /// </summary>
+    public Guid? DealerId { get; set; }
+
+    public Dealer? Dealer { get; set; }
+
     public string ProductName { get; set; } = string.Empty;
 
     public string Sku { get; set; } = string.Empty;

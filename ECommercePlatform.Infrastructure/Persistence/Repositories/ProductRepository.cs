@@ -37,6 +37,10 @@ public sealed class ProductRepository : IProductRepository
         {
             query = query.Where(p => p.BrandId == filter.BrandId);
         }
+        if (filter.DealerId is not null)
+        {
+            query = query.Where(p => p.DealerId == filter.DealerId);
+        }
 
         if (filter.Status is not null)
         {
@@ -93,6 +97,9 @@ public sealed class ProductRepository : IProductRepository
             (_, true) => query.OrderByDescending(p => p.ProductName),
             _ => query.OrderBy(p => p.ProductName)
         };
+
+    public Task<int> CountByDealerAsync(Guid dealerId, CancellationToken cancellationToken)
+        => _db.Products.CountAsync(p => p.DealerId == dealerId, cancellationToken);
 
     public void Add(Product product) => _db.Products.Add(product);
 

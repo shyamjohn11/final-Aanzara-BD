@@ -83,6 +83,8 @@ public sealed class ApplicationDbContext : DbContext, IUnitOfWork
 
     public DbSet<Agent> Agents => Set<Agent>();
 
+    public DbSet<Dealer> Dealers => Set<Dealer>();
+
     public DbSet<BusinessAccount> BusinessAccounts  => Set<BusinessAccount>();
 
     public DbSet<Address> Addresses => Set<Address>();

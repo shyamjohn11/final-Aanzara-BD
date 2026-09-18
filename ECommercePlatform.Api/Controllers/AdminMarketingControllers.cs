@@ -195,6 +195,15 @@ public sealed class AdminOffersController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
         => ToNoContent(await Sender.Send(new DeleteOfferCommand(id), ct));
+
+    public sealed record UpdateStatusRequest(string Status);
+
+    [HttpPatch("{id:guid}/status")] // activate/deactivate
+    [ProducesResponseType(typeof(OfferResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OfferResponse>> UpdateStatus(
+        Guid id, [FromBody] UpdateStatusRequest request, CancellationToken ct)
+        => ToResponse(await Sender.Send(new UpdateOfferStatusCommand(id, request.Status), ct));
 }
 
 [Authorize(Roles = Roles.Admin)]
@@ -235,6 +244,15 @@ public sealed class AdminCouponsController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
         => ToNoContent(await Sender.Send(new DeleteCouponCommand(id), ct));
+
+    public sealed record UpdateCouponStatusRequest(string Status);
+
+    [HttpPatch("{id:guid}/status")] // activate/deactivate
+    [ProducesResponseType(typeof(CouponAdminResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CouponAdminResponse>> UpdateStatus(
+        Guid id, [FromBody] UpdateCouponStatusRequest request, CancellationToken ct)
+        => ToResponse(await Sender.Send(new UpdateCouponStatusCommand(id, request.Status), ct));
 }
 
 [Authorize(Roles = Roles.Admin)]

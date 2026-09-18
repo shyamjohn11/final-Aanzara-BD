@@ -6,6 +6,7 @@ public sealed record ProductResponse
     public Guid? CategoryId { get; init; }
     public Guid? SubCategoryId { get; init; }
     public Guid? BrandId { get; init; }
+    public Guid? DealerId { get; init; }
     public string ProductName { get; init; } = string.Empty;
     public string Sku { get; init; } = string.Empty;
     public string? Description { get; init; }
@@ -29,6 +30,7 @@ public sealed record ProductSummaryResponse
     public Guid? CategoryId { get; init; }
     public Guid? SubCategoryId { get; init; }
     public Guid? BrandId { get; init; }
+    public Guid? DealerId { get; init; }
     public decimal Price { get; init; }
     public decimal Mrp { get; init; }
     public decimal Discount { get; init; }

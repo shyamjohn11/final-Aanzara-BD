@@ -8,6 +8,7 @@ using ECommercePlatform.Domain.Enums;
 
 using ECommercePlatform.Domain.Errors;
 using ECommercePlatform.Domain.Entities;
+using Microsoft.Extensions.Logging;
 namespace ECommercePlatform.Application.Features.Orders.PlaceOrder;
 
 public sealed class PlaceOrderCommandHandler(
@@ -20,7 +21,9 @@ public sealed class PlaceOrderCommandHandler(
     IDeliveryRuleRepository deliveryRules,
     IAdminRepository<Notification> notifications,
     IUnitOfWork unitOfWork,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IEmailService emailService,
+    ILogger<PlaceOrderCommandHandler> logger)
     : ICommandHandler<PlaceOrderCommand, Result<PlaceOrderResponse>>
 {
     public async Task<Result<PlaceOrderResponse>> Handle(
@@ -154,9 +157,51 @@ public sealed class PlaceOrderCommandHandler(
             $"{user.Name} placed an order of ₹{order.GrandTotal} ({cart.CartItems.Count} items).",
             "/admin/orders");
 
+        // Snapshot the cart lines for the confirmation email before SaveChanges:
+        // order items only carry ProductId, while the email needs names, and
+        // the in-memory cart objects still hold their Product navs here.
+        var emailLines = cart.CartItems
+            .Select(i => new OrderEmailLine(i.Product.ProductName, i.Quantity, i.Product.Price))
+            .ToList();
+        var shipTo = string.IsNullOrWhiteSpace(user.Phone)
+            ? user.Name
+            : $"{user.Name} ({user.Phone.Trim()})";
+        var addressSummary = string.Join(", ", new[]
+            {
+                address.AddressLine1,
+                address.AddressLine2,
+                address.City,
+                address.State,
+                address.Pincode
+            }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
         // One save for the order, items, address snapshot, payment, history,
         // and the emptied cart — checkout either fully happens or not at all.
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email + already-saved admin notification row above
+        // complete the order-placed flow. Email failure must never fail checkout.
+        await OrderEmailSender.TrySendAsync(
+            emailService,
+            logger,
+            user.Email,
+            $"Order {orderNo} confirmed",
+            OrderEmailSender.PlaceOrderHtml(
+                user.Name,
+                orderNo,
+                emailLines,
+                summary.Subtotal,
+                summary.DiscountTotal,
+                summary.TaxTotal,
+                summary.DeliveryCharge,
+                summary.HandlingFee,
+                summary.Total,
+                summary.AppliedCouponCode,
+                payment.PaymentMethod.ToString(),
+                payment.Status.ToString(),
+                shipTo,
+                addressSummary),
+            cancellationToken);
 
         return Result.Success(new PlaceOrderResponse
         {

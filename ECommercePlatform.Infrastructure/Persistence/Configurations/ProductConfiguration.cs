@@ -41,6 +41,13 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
                 id => id == null ? null : id.ToString(),
                 value => value == null ? null : Guid.Parse(value));
 
+        builder.Property(p => p.DealerId)
+            .HasColumnName("dealerId")
+            .HasColumnType("char(36)")
+            .HasConversion(
+                id => id == null ? null : id.ToString(),
+                value => value == null ? null : Guid.Parse(value));
+
         builder.Property(p => p.ProductName)
             .HasColumnName("productName")
             .HasMaxLength(200)
@@ -77,5 +84,13 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
         builder.HasIndex(p => p.SubCategoryId).HasDatabaseName("IX_Products_SubCategoryId");
         builder.HasIndex(p => p.CategoryId).HasDatabaseName("IX_Products_CategoryId");
         builder.HasIndex(p => p.ProductName).HasDatabaseName("IX_Products_ProductName");
+        builder.HasIndex(p => p.DealerId).HasDatabaseName("IX_Products_DealerId");
+
+        // Dealer products are never cascade-deleted: a dealer with products
+        // must be emptied (or deactivated) before it can be removed.
+        builder.HasOne(p => p.Dealer)
+            .WithMany()
+            .HasForeignKey(p => p.DealerId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

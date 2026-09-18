@@ -7,4 +7,5 @@ public sealed record WishlistItemResponse(
     string Sku,
     decimal Price,
     decimal Mrp,
-    string Status);
+    string Status,
+    string ImageUrl);

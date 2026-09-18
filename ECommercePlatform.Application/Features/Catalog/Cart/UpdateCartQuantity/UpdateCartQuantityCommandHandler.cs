@@ -38,7 +38,7 @@ public sealed class UpdateCartQuantityCommandHandler
             return Result.Failure<CartItemResponse>(CartErrors.ItemNotFound);
         }
 
-        if (item.Product.Status != ProductStatus.Active)
+        if (!string.Equals(item.Product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
         {
             return Result.Failure<CartItemResponse>(CartErrors.ProductUnavailable);
         }

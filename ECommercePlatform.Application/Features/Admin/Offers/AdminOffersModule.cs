@@ -80,6 +80,8 @@ public sealed record UpdateOfferCommand : ICommand<Result<OfferResponse>>
 
 public sealed record DeleteOfferCommand(Guid Id) : ICommand<Result>;
 
+public sealed record UpdateOfferStatusCommand(Guid Id, string Status) : ICommand<Result<OfferResponse>>;
+
 internal static class OfferMappings
 {
     internal static OfferResponse ToDto(this Offer offer) => new()
@@ -264,5 +266,34 @@ public sealed class DeleteOfferCommandHandler : IRequestHandler<DeleteOfferComma
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         return Result.Success();
+    }
+}
+
+public sealed class UpdateOfferStatusCommandHandler
+    : IRequestHandler<UpdateOfferStatusCommand, Result<OfferResponse>>
+{
+    private readonly IAdminRepository<Offer> _offers;
+    private readonly IUnitOfWork _unitOfWork;
+
+    public UpdateOfferStatusCommandHandler(IAdminRepository<Offer> offers, IUnitOfWork unitOfWork)
+    {
+        _offers = offers;
+        _unitOfWork = unitOfWork;
+    }
+
+    public async Task<Result<OfferResponse>> Handle(
+        UpdateOfferStatusCommand request, CancellationToken cancellationToken)
+    {
+        var offer = await _offers.GetByIdAsync(request.Id, cancellationToken);
+
+        if (offer is null)
+        {
+            return Result.Failure<OfferResponse>(AdminErrors.NotFound("Offer", request.Id));
+        }
+
+        offer.Status = request.Status;
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result.Success(offer.ToDto());
     }
 }

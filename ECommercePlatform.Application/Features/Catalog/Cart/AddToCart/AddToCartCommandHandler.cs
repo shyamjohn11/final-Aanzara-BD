@@ -43,7 +43,7 @@ public sealed class AddToCartCommandHandler : ICommandHandler<AddToCartCommand, 
             return Result.Failure<CartItemResponse>(CatalogErrors.ProductNotFound);
         }
 
-        if (product.Status != ProductStatus.Active)
+        if (!string.Equals(product.Status, ProductStatus.Active, StringComparison.OrdinalIgnoreCase))
         {
             return Result.Failure<CartItemResponse>(CartErrors.ProductUnavailable);
         }

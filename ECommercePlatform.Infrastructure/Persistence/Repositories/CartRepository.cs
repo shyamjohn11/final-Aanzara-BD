@@ -39,10 +39,13 @@ public sealed class CartRepository : ICartRepository
                 SELECT 1 FROM Carts WITH (UPDLOCK, HOLDLOCK) WHERE userId = @userId
             )
             """,
-            new SqlParameter("@cartId", SqlDbType.Char, 36) { Value = userIdValue },
-            new SqlParameter("@userId", SqlDbType.Char, 36) { Value = userIdValue },
-            new SqlParameter("@createdAt", SqlDbType.DateTimeOffset) { Value = now },
-            new SqlParameter("@updatedAt", SqlDbType.DateTimeOffset) { Value = now },
+            new object[]
+            {
+                new SqlParameter("@cartId", SqlDbType.Char, 36) { Value = userIdValue },
+                new SqlParameter("@userId", SqlDbType.Char, 36) { Value = userIdValue },
+                new SqlParameter("@createdAt", SqlDbType.DateTimeOffset) { Value = now },
+                new SqlParameter("@updatedAt", SqlDbType.DateTimeOffset) { Value = now },
+            },
             cancellationToken);
 
         return await _db.Carts

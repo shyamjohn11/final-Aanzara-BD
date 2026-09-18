@@ -10,6 +10,7 @@ using ECommercePlatform.Application.Features.Orders;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Enums;
 using ECommercePlatform.Domain.Errors;
+using Microsoft.Extensions.Logging;
 
 namespace ECommercePlatform.Application.Features.Admin.Orders;
 
@@ -158,7 +159,9 @@ public sealed class UpdateAdminOrderStatusCommandHandler(
     IAdminRepository<Notification> notifications,
     IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IEmailService emailService,
+    ILogger<UpdateAdminOrderStatusCommandHandler> logger)
     : ICommandHandler<UpdateAdminOrderStatusCommand, Result<OrderAdminResponse>>
 {
     public async Task<Result<OrderAdminResponse>> Handle(
@@ -205,6 +208,19 @@ public sealed class UpdateAdminOrderStatusCommandHandler(
             "/admin/orders");
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email; failure must never fail the status update.
+        // GetByIdAsync includes User, so no repository change is needed.
+        await OrderEmailSender.TrySendAsync(
+            emailService,
+            logger,
+            order.User?.Email,
+            $"Order {OrderMappings.OrderNoFor(order)} is now {match}",
+            OrderEmailSender.StatusChangedHtml(
+                order.User?.Name ?? "Customer",
+                OrderMappings.OrderNoFor(order),
+                match),
+            cancellationToken);
 
         return Result.Success(OrderAdminMappings.ToAdmin(order));
     }
