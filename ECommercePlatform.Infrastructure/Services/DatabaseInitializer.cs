@@ -110,6 +110,9 @@ public sealed class DatabaseInitializer
             (Permissions.Inventory.View, nameof(Permissions.Inventory)),
             (Permissions.Inventory.Add, nameof(Permissions.Inventory)),
             (Permissions.Inventory.Adjust, nameof(Permissions.Inventory)),
+
+            (Permissions.Wholesale.View, nameof(Permissions.Wholesale)),
+            (Permissions.Wholesale.Update, nameof(Permissions.Wholesale)),
         };
 
         // --- Permissions: insert any name that isn't already a row. ---

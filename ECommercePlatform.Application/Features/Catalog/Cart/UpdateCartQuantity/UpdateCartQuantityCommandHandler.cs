@@ -44,9 +44,15 @@ public sealed class UpdateCartQuantityCommandHandler
         }
 
         var stockRows = await _inventory.GetByProductAsync(item.ProductId, warehouseId: null, cancellationToken);
-        var available = stockRows.Sum(i => i.StockQuantity - i.ReservedQuantity);
 
-        if (request.Quantity > available)
+        // Same rule as add-to-cart and the shelf: products with no inventory
+        // rows are sellable without a cap; only tracked stock is enforced.
+        var hasStockRows = stockRows.Count > 0;
+        var available = hasStockRows
+            ? stockRows.Sum(i => i.StockQuantity - i.ReservedQuantity)
+            : int.MaxValue;
+
+        if (hasStockRows && request.Quantity > available)
         {
             return Result.Failure<CartItemResponse>(CartErrors.InsufficientStock);
         }

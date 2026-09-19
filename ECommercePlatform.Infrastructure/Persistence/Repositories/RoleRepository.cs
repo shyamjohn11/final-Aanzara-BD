@@ -101,6 +101,11 @@ public sealed class RoleRepository : IRoleRepository
             .ToListAsync(cancellationToken);
 
     /// <inheritdoc />
+    public async Task<Role?> GetByNameAsync(string roleName, CancellationToken cancellationToken)
+        => await _database.Roles
+            .FirstOrDefaultAsync(role => role.RoleName == roleName, cancellationToken);
+
+    /// <inheritdoc />
     public async Task<bool> AllPermissionsExistAsync(
         IEnumerable<Guid> permissionIds, CancellationToken cancellationToken)
     {

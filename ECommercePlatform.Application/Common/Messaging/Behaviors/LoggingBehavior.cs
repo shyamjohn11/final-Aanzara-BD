@@ -63,6 +63,16 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
 
             return response;
         }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected (browser navigated, tab closed, timeout).
+            // Not an application error — don't log as Error, just Debug.
+            _logger.LogDebug(
+                "{Kind} {Name} was canceled after {Elapsed:0.0} ms.",
+                kind, name, Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(

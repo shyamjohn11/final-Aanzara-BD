@@ -44,6 +44,9 @@ public interface IRoleRepository
     /// <summary>Every defined permission, ordered by module then name.</summary>
     Task<IReadOnlyList<Permission>> GetAllPermissionsAsync(CancellationToken cancellationToken);
 
+    /// <summary>Single role by name, or null.</summary>
+    Task<Role?> GetByNameAsync(string roleName, CancellationToken cancellationToken);
+
     /// <summary>True when every id resolves to a defined permission.</summary>
     Task<bool> AllPermissionsExistAsync(IEnumerable<Guid> permissionIds, CancellationToken cancellationToken);
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ECommercePlatform.Api.Common;
+using ECommercePlatform.Api.Security;
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
 using ECommercePlatform.Application.Features.Admin.Notifications;
@@ -78,12 +79,14 @@ public sealed class AdminWholesalePricingController : ApiControllerBase
     public AdminWholesalePricingController(ISender sender) : base(sender) { }
 
     [HttpGet] // #145 price list
+    [HasPermission(Permissions.Wholesale.View)]
     [ProducesResponseType(typeof(PagedResult<WholesalePriceResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<WholesalePriceResponse>>> List(
         [FromQuery] GetWholesalePricesQuery query, CancellationToken ct)
         => ToResponse(await Sender.Send(query, ct));
 
     [HttpPut] // #146 bulk price update
+    [HasPermission(Permissions.Wholesale.Update)]
     [ProducesResponseType(typeof(IReadOnlyList<WholesalePriceResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<WholesalePriceResponse>>> BulkUpdate(
         [FromBody] List<WholesalePriceUpdateDto> items, CancellationToken ct)

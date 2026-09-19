@@ -223,8 +223,11 @@ public sealed class PlaceOrderCommandHandler(
             .GroupBy(i => i.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(i => i.StockQuantity - i.ReservedQuantity));
 
+        // Products with no inventory rows are sellable without a cap (same
+        // rule as the shelf and the cart): only tracked stock can block
+        // checkout, so a missing key means "no limit", not "zero".
         return cart.CartItems
-            .Where(i => i.Quantity > availableByProduct.GetValueOrDefault(i.ProductId))
+            .Where(i => availableByProduct.TryGetValue(i.ProductId, out var available) && i.Quantity > available)
             .Select(i => i.Product.ProductName)
             .ToArray();
     }

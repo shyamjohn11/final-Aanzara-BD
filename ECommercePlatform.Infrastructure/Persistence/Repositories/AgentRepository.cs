@@ -69,4 +69,23 @@ public sealed class AgentRepository : IAgentRepository
 
         return (agents, total);
     }
+
+    public Task<bool> EmployeeCodeExistsAsync(
+        string employeeCode, Guid? excludingAgentId, CancellationToken cancellationToken)
+        => _db.Agents.AnyAsync(
+            a => a.EmployeeCode == employeeCode
+                && (!excludingAgentId.HasValue || a.AgentId != excludingAgentId.Value),
+            cancellationToken);
+
+    public Task AddAsync(Agent agent, CancellationToken cancellationToken)
+    {
+        _db.Agents.Add(agent);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(Agent agent, CancellationToken cancellationToken)
+    {
+        _db.Agents.Remove(agent);
+        return Task.CompletedTask;
+    }
 }

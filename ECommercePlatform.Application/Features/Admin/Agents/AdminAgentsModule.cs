@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
+using ECommercePlatform.Application.Common.Security;
 using ECommercePlatform.Application.Features.Admin.Common;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
@@ -42,6 +43,61 @@ public sealed record GetAgentsQuery : IQuery<Result<PagedResult<AgentResponse>>>
 }
 
 public sealed record GetAgentByIdQuery(Guid Id) : IQuery<Result<AgentResponse>>;
+
+public sealed record CreateAgentCommand : ICommand<Result<AgentResponse>>
+{
+    [Required]
+    [MaxLength(150)]
+    public string Name { get; init; } = string.Empty;
+
+    [Required]
+    [EmailAddress]
+    [MaxLength(320)]
+    public string Email { get; init; } = string.Empty;
+
+    [MaxLength(30)]
+    [Phone]
+    public string? Phone { get; init; }
+
+    [Required]
+    [MinLength(12)]
+    [MaxLength(256)]
+    public string Passphrase { get; init; } = string.Empty;
+
+    [MaxLength(50)]
+    public string? EmployeeCode { get; init; }
+
+    [MaxLength(20)]
+    public string? Status { get; init; }
+}
+
+public sealed record UpdateAgentCommand : ICommand<Result<AgentResponse>>
+{
+    [JsonIgnore]
+    public Guid Id { get; init; }
+
+    [MaxLength(150)]
+    public string? Name { get; init; }
+
+    [EmailAddress]
+    [MaxLength(320)]
+    public string? Email { get; init; }
+
+    [MaxLength(30)]
+    [Phone]
+    public string? Phone { get; init; }
+
+    [MaxLength(50)]
+    public string? EmployeeCode { get; init; }
+
+    [MaxLength(20)]
+    public string? Status { get; init; }
+}
+
+public sealed record DeleteAgentCommand(Guid Id) : ICommand<Result>;
+
+public sealed record UpdateAgentStatusCommand(Guid Id, string Status)
+    : ICommand<Result<AgentResponse>>;
 
 internal static class AgentMappings
 {
@@ -111,6 +167,262 @@ public sealed class GetAgentByIdQueryHandler(
         {
             return Result.Failure<AgentResponse>(AdminErrors.NotFound("Agent", request.Id));
         }
+
+        var dealerCount = await dealers.CountAsync(
+            d => d.AgentId == agent.AgentId, cancellationToken);
+
+        return Result.Success(AgentMappings.ToDto(agent, dealerCount));
+    }
+}
+
+public sealed class CreateAgentCommandHandler(
+    IUserRepository users,
+    IAgentRepository agents,
+    IAdminRepository<Dealer> dealers,
+    IRoleRepository roles,
+    IUnitOfWork unitOfWork,
+    IPassphraseHasher hasher,
+    ICurrentUser currentUser,
+    TimeProvider timeProvider)
+    : ICommandHandler<CreateAgentCommand, Result<AgentResponse>>
+{
+    public async Task<Result<AgentResponse>> Handle(
+        CreateAgentCommand request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Validation("admin.agent_name_required", "Agent name is required."));
+        }
+
+        var email = request.Email.Trim();
+        if (await users.EmailExistsAsync(email, cancellationToken))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Conflict("admin.email_taken", $"Email '{email}' is already registered."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.EmployeeCode)
+            && await agents.EmployeeCodeExistsAsync(
+                request.EmployeeCode.Trim(), null, cancellationToken))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Conflict("admin.employee_code_taken",
+                    $"Employee code '{request.EmployeeCode.Trim()}' is already in use."));
+        }
+
+        if (!Enum.TryParse<AgentStatus>(
+                request.Status?.Trim() ?? nameof(AgentStatus.Active),
+                ignoreCase: true, out var status))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Validation("admin.invalid_agent_status",
+                    $"Status '{request.Status}' is not valid."));
+        }
+
+        var adminId = currentUser.UserId;
+        if (adminId is null)
+        {
+            return Result.Failure<AgentResponse>(Error.Unauthorized(
+                "admin.not_authenticated", "You must be signed in."));
+        }
+
+        var user = new User
+        {
+            UserId = Guid.NewGuid(),
+            Name = request.Name.Trim(),
+            Email = email,
+            Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
+            HashedPassphrase = hasher.Hash(request.Passphrase),
+            Status = UserStatus.Active,
+            CreatedAt = timeProvider.GetUtcNow(),
+            UpdatedAt = timeProvider.GetUtcNow()
+        };
+
+        users.Add(user);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Assign the Agent role so the new account can sign in as agent.
+        var agentRole = await roles.GetByNameAsync("Agent", cancellationToken);
+        if (agentRole is not null)
+        {
+            var alreadyHasRole = await roles.GetRolesForUserAsync(user.UserId, cancellationToken);
+            if (!alreadyHasRole.Contains(agentRole.RoleName))
+            {
+                roles.AddAdminUserRole(user.UserId, agentRole.RoleId);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        var agent = new Agent
+        {
+            AgentId = Guid.NewGuid(),
+            UserId = user.UserId,
+            CreatedByAdminId = adminId.Value,
+            EmployeeCode = string.IsNullOrWhiteSpace(request.EmployeeCode)
+                ? null
+                : request.EmployeeCode.Trim(),
+            Status = status,
+            CreatedAt = timeProvider.GetUtcNow(),
+            UpdatedAt = timeProvider.GetUtcNow(),
+            User = user
+        };
+
+        // Use repository Add so the context tracks it correctly.
+        await agents.AddAsync(agent, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Re-load with includes for consistent DTO mapping.
+        var created = await agents.GetByIdAsync(agent.AgentId, cancellationToken);
+        return Result.Success(AgentMappings.ToDto(created ?? agent, 0));
+    }
+}
+
+public sealed class UpdateAgentCommandHandler(
+    IUserRepository users,
+    IAgentRepository agents,
+    IAdminRepository<Dealer> dealers,
+    IUnitOfWork unitOfWork)
+    : ICommandHandler<UpdateAgentCommand, Result<AgentResponse>>
+{
+    public async Task<Result<AgentResponse>> Handle(
+        UpdateAgentCommand request, CancellationToken cancellationToken)
+    {
+        var agent = await agents.GetByIdAsync(request.Id, cancellationToken);
+        if (agent is null)
+        {
+            return Result.Failure<AgentResponse>(AdminErrors.NotFound("Agent", request.Id));
+        }
+
+        var user = agent.User ?? await users.GetByIdAsync(agent.UserId, cancellationToken);
+        if (user is null)
+        {
+            return Result.Failure<AgentResponse>(AdminErrors.NotFound("User", agent.UserId));
+        }
+
+        if (request.Email is not null)
+        {
+            var email = request.Email.Trim();
+            if (!string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase)
+                && await users.EmailExistsAsync(email, cancellationToken))
+            {
+                return Result.Failure<AgentResponse>(
+                    Error.Conflict("admin.email_taken", $"Email '{email}' is already registered."));
+            }
+
+            user.Email = email;
+        }
+
+        if (request.Name is not null)
+        {
+            user.Name = request.Name.Trim();
+        }
+
+        if (request.Phone is not null)
+        {
+            user.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+        }
+
+        if (request.EmployeeCode is not null)
+        {
+            var code = request.EmployeeCode.Trim();
+            if (code.Length == 0)
+            {
+                agent.EmployeeCode = null;
+            }
+            else
+            {
+                if (await agents.EmployeeCodeExistsAsync(code, agent.AgentId, cancellationToken))
+                {
+                    return Result.Failure<AgentResponse>(
+                        Error.Conflict("admin.employee_code_taken",
+                            $"Employee code '{code}' is already in use."));
+                }
+
+                agent.EmployeeCode = code;
+            }
+        }
+
+        if (request.Status is not null)
+        {
+            if (!Enum.TryParse<AgentStatus>(request.Status.Trim(), ignoreCase: true, out var status))
+            {
+                return Result.Failure<AgentResponse>(
+                    Error.Validation("admin.invalid_agent_status",
+                        $"Status '{request.Status}' is not valid."));
+            }
+
+            agent.Status = status;
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var dealerCount = await dealers.CountAsync(
+            d => d.AgentId == agent.AgentId, cancellationToken);
+
+        return Result.Success(AgentMappings.ToDto(agent, dealerCount));
+    }
+}
+
+public sealed class DeleteAgentCommandHandler(
+    IAgentRepository agents,
+    IAdminRepository<Dealer> dealers,
+    IUnitOfWork unitOfWork)
+    : IRequestHandler<DeleteAgentCommand, Result>
+{
+    public async Task<Result> Handle(DeleteAgentCommand request, CancellationToken cancellationToken)
+    {
+        var agent = await agents.GetByIdAsync(request.Id, cancellationToken);
+        if (agent is null)
+        {
+            return Result.Failure(AdminErrors.NotFound("Agent", request.Id));
+        }
+
+        var dealerCount = await dealers.CountAsync(
+            d => d.AgentId == agent.AgentId, cancellationToken);
+        if (dealerCount > 0)
+        {
+            return Result.Failure(Error.Conflict("admin.agent_has_dealers",
+                $"Agent has {dealerCount} dealer(s). Remove or reassign them first."));
+        }
+
+        await agents.RemoveAsync(agent, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return Result.Success();
+    }
+}
+
+public sealed class UpdateAgentStatusCommandHandler(
+    IAgentRepository agents,
+    IAdminRepository<Dealer> dealers,
+    IUnitOfWork unitOfWork)
+    : ICommandHandler<UpdateAgentStatusCommand, Result<AgentResponse>>
+{
+    public async Task<Result<AgentResponse>> Handle(
+        UpdateAgentStatusCommand request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Status))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Validation("admin.status_required", "Status is required."));
+        }
+
+        if (!Enum.TryParse<AgentStatus>(request.Status.Trim(), ignoreCase: true, out var status))
+        {
+            return Result.Failure<AgentResponse>(
+                Error.Validation("admin.invalid_agent_status",
+                    $"Status '{request.Status}' is not valid."));
+        }
+
+        var agent = await agents.GetByIdAsync(request.Id, cancellationToken);
+        if (agent is null)
+        {
+            return Result.Failure<AgentResponse>(AdminErrors.NotFound("Agent", request.Id));
+        }
+
+        agent.Status = status;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         var dealerCount = await dealers.CountAsync(
             d => d.AgentId == agent.AgentId, cancellationToken);

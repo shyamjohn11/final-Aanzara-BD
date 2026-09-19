@@ -1,6 +1,9 @@
 using ECommercePlatform.Api.Common;
 using ECommercePlatform.Application.Common.Messaging;
 using ECommercePlatform.Application.Features.Admin.Combos;
+using ECommercePlatform.Application.Features.Admin.Banners;
+using ECommercePlatform.Application.Features.Admin.CartRules;
+using ECommercePlatform.Application.Features.Admin.WholesalePricing;
 using ECommercePlatform.Application.Features.Admin.Coupons;
 using ECommercePlatform.Application.Features.Admin.Offers;
 using ECommercePlatform.Application.Features.Shop.Deals;
@@ -81,6 +84,66 @@ public sealed class StorefrontDealsController : ApiControllerBase
         finally
         {
             _logger.LogInformation("GetActiveCoupons action finished.");
+        }
+    }
+
+    /// <summary>Active banners for the storefront promo tiles.</summary>
+    [HttpGet("banners")]
+    [ProducesResponseType(typeof(IReadOnlyList<BannerResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<BannerResponse>>> GetActiveBanners(
+        [FromQuery] int count = 8, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GetActiveBanners action started.");
+
+        try
+        {
+            var result = await Sender.Send(new GetActiveBannersQuery(count), cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("GetActiveBanners action finished.");
+        }
+    }
+
+    /// <summary>Active cart rules for the bulk-pricing shelf.</summary>
+    [HttpGet("cart-rules")]
+    [ProducesResponseType(typeof(IReadOnlyList<CartRuleResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<CartRuleResponse>>> GetActiveCartRules(
+        [FromQuery] int count = 8, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GetActiveCartRules action started.");
+
+        try
+        {
+            var result = await Sender.Send(new GetActiveCartRulesQuery(count), cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("GetActiveCartRules action finished.");
+        }
+    }
+
+    /// <summary>Seed-backed wholesale price tiers for the bulk-order shelf.</summary>
+    [HttpGet("bulk-tiers")]
+    [ProducesResponseType(typeof(IReadOnlyList<WholesalePriceResponse>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<WholesalePriceResponse>>> GetActiveBulkTiers(
+        [FromQuery] int count = 8, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("GetActiveBulkTiers action started.");
+
+        try
+        {
+            var result = await Sender.Send(new GetActiveBulkTiersQuery(count), cancellationToken);
+
+            return ToResponse(result);
+        }
+        finally
+        {
+            _logger.LogInformation("GetActiveBulkTiers action finished.");
         }
     }
 }

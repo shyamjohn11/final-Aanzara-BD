@@ -28,7 +28,37 @@ public sealed class AdminAgentsController : ApiControllerBase
     public async Task<ActionResult<AgentResponse>> Get(Guid id, CancellationToken ct)
         => ToResponse(await Sender.Send(new GetAgentByIdQuery(id), ct));
 
-    [HttpGet("{agentId:guid}/dealers")]
+    [HttpPost] // #158 create agent (creates User + Agent + Agent role)
+    [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status201Created)]
+    public async Task<ActionResult<AgentResponse>> Create(
+        [FromBody] CreateAgentCommand command, CancellationToken ct)
+    {
+        var result = await Sender.Send(command, ct);
+        return result.IsFailure
+            ? ToProblem(result.Error!)
+            : CreatedAtRoute("GetAdminAgent", new { id = result.Value.AgentId }, result.Value);
+    }
+
+    [HttpPut("{id:guid}")] // #159 update agent
+    [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<AgentResponse>> Update(
+        Guid id, [FromBody] UpdateAgentCommand command, CancellationToken ct)
+        => ToResponse(await Sender.Send(command with { Id = id }, ct));
+
+    [HttpDelete("{id:guid}")] // #160 delete agent (blocked if has dealers)
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
+        => ToNoContent(await Sender.Send(new DeleteAgentCommand(id), ct));
+
+    public sealed record UpdateAgentStatusRequest(string Status);
+
+    [HttpPatch("{id:guid}/status")] // #161 agent status
+    [ProducesResponseType(typeof(AgentResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<AgentResponse>> UpdateStatus(
+        Guid id, [FromBody] UpdateAgentStatusRequest request, CancellationToken ct)
+        => ToResponse(await Sender.Send(new UpdateAgentStatusCommand(id, request.Status), ct));
+
+    [HttpGet("{agentId:guid}/dealers")] // #162
     [ProducesResponseType(typeof(PagedResult<DealerResponse>), StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<DealerResponse>>> ListDealers(
         Guid agentId, [FromQuery] GetDealersQuery query, CancellationToken ct)

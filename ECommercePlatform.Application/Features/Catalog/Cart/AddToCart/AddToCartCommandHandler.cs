@@ -49,14 +49,21 @@ public sealed class AddToCartCommandHandler : ICommandHandler<AddToCartCommand, 
         }
 
         var stockRows = await _inventory.GetByProductAsync(request.ProductId, warehouseId: null, cancellationToken);
-        var available = stockRows.Sum(i => i.StockQuantity - i.ReservedQuantity);
+
+        // Products with no inventory rows are treated as sellable without a
+        // cap (same rule as the shelf, which surfaces them as in stock), so
+        // only products tracked in inventory are stock-checked here.
+        var hasStockRows = stockRows.Count > 0;
+        var available = hasStockRows
+            ? stockRows.Sum(i => i.StockQuantity - i.ReservedQuantity)
+            : int.MaxValue;
 
         var cart = await _carts.GetOrCreateByUserIdAsync(request.UserId, cancellationToken);
 
         var existingItem = cart.CartItems.FirstOrDefault(i => i.ProductId == request.ProductId);
         var desiredQuantity = request.Quantity + (existingItem?.Quantity ?? 0);
 
-        if (desiredQuantity > available)
+        if (hasStockRows && desiredQuantity > available)
         {
             return Result.Failure<CartItemResponse>(CartErrors.InsufficientStock);
         }

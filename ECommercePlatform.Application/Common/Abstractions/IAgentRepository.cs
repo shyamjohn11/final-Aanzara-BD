@@ -11,4 +11,11 @@ public interface IAgentRepository
 
     Task<(IReadOnlyList<Agent> Agents, int TotalCount)> SearchAsync(
         string? search, string? status, int page, int pageSize, CancellationToken cancellationToken);
+
+    Task<bool> EmployeeCodeExistsAsync(
+        string employeeCode, Guid? excludingAgentId, CancellationToken cancellationToken);
+
+    Task AddAsync(Agent agent, CancellationToken cancellationToken);
+
+    Task RemoveAsync(Agent agent, CancellationToken cancellationToken);
 }

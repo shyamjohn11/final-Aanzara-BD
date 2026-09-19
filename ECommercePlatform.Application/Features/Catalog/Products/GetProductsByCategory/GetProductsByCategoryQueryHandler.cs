@@ -11,8 +11,21 @@ public sealed class GetProductsByCategoryQueryHandler
     : IQueryHandler<GetProductsByCategoryQuery, Result<PagedResult<ProductSummaryResponse>>>
 {
     private readonly IProductRepository _products;
+    private readonly IBrandRepository _brands;
+    private readonly IProductImageRepository _productImages;
+    private readonly IInventoryRepository _inventory;
 
-    public GetProductsByCategoryQueryHandler(IProductRepository products) => _products = products;
+    public GetProductsByCategoryQueryHandler(
+        IProductRepository products,
+        IBrandRepository brands,
+        IProductImageRepository productImages,
+        IInventoryRepository inventory)
+    {
+        _products = products;
+        _brands = brands;
+        _productImages = productImages;
+        _inventory = inventory;
+    }
 
     public async Task<Result<PagedResult<ProductSummaryResponse>>> Handle(
         GetProductsByCategoryQuery request, CancellationToken cancellationToken)
@@ -24,8 +37,11 @@ public sealed class GetProductsByCategoryQueryHandler
         var page = await _products.SearchAsync(
             filter, request.Page, request.PageSize, cancellationToken);
 
+        var enriched = await page.Items.ToEnrichedSummariesAsync(
+            _brands, _productImages, _inventory, cancellationToken);
+
         return Result.Success(new PagedResult<ProductSummaryResponse>(
-            page.Items.Select(p => p.ToSummary()).ToArray(),
+            enriched.ToArray(),
             page.Page,
             page.PageSize,
             page.TotalCount));

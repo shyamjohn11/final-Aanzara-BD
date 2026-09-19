@@ -40,4 +40,10 @@ public static class Permissions
         public const string Add = "Inventory.Add";
         public const string Adjust = "Inventory.Adjust";
     }
+
+    public static class Wholesale
+    {
+        public const string View = "Wholesale.View";
+        public const string Update = "Wholesale.Update";
+    }
 }
