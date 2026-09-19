@@ -11,6 +11,8 @@ public static class InventoryMappings
         ProductId = i.ProductId,
         ProductName = i.Product?.ProductName ?? string.Empty,
         Sku = i.Product?.Sku ?? string.Empty,
+        Category = i.Product?.Category?.CategoryName ?? "Uncategorized",
+        Brand = string.Empty,
         WarehouseId = i.WarehouseId,
         WarehouseName = i.Warehouse?.WarehouseName ?? string.Empty,
         StockQuantity = i.StockQuantity,

@@ -19,6 +19,9 @@ public interface IInventoryRepository
     Task<PagedResult<Inventory>> SearchInventoryAsync(
         Guid? warehouseId,
         Guid? productId,
+        string? search,
+        string? status,
+        string? category,
         int page,
         int pageSize,
         CancellationToken cancellationToken);

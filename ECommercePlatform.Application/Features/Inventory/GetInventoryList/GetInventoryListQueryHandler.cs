@@ -21,6 +21,9 @@ public sealed class GetInventoryListQueryHandler
         var page = await _inventoryRepository.SearchInventoryAsync(
             request.WarehouseId,
             request.ProductId,
+            request.Search,
+            request.Status,
+            request.Category,
             request.Page,
             request.PageSize,
             cancellationToken);

@@ -25,12 +25,20 @@ public sealed class GetProductImageFileQueryHandler
     public async Task<Result<CategoryImageFileResponse>> Handle(
         GetProductImageFileQuery request, CancellationToken cancellationToken)
     {
-        if (await _products.GetByIdAsync(request.ProductId, cancellationToken) is null)
+        // Image file streaming is a short, non-critical read. Using the request's
+        // CancellationToken (RequestAborted) makes every browser-cancelled <img>
+        // throw OperationCanceledException up to GlobalExceptionHandler and
+        // trigger VS first-chance breaks. Use None so the DB lookup always
+        // completes; the controller will simply not write the response if the
+        // client is already gone.
+        var ct = CancellationToken.None;
+
+        if (await _products.GetByIdAsync(request.ProductId, ct) is null)
         {
             return Result.Failure<CategoryImageFileResponse>(CatalogErrors.ProductNotFound);
         }
 
-        var images = await _images.GetForProductAsync(request.ProductId, cancellationToken);
+        var images = await _images.GetForProductAsync(request.ProductId, ct);
 
         var image = images.FirstOrDefault(i => i.ImageId == request.ImageId);
 

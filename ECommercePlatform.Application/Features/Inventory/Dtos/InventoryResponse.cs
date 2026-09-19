@@ -6,6 +6,8 @@ public sealed record InventoryResponse
     public Guid ProductId { get; init; }
     public string ProductName { get; init; } = string.Empty;
     public string Sku { get; init; } = string.Empty;
+    public string Category { get; init; } = "Uncategorized";
+    public string Brand { get; init; } = string.Empty;
     public Guid WarehouseId { get; init; }
     public string WarehouseName { get; init; } = string.Empty;
     public int StockQuantity { get; init; }

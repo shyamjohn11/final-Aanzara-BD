@@ -82,14 +82,26 @@ public static class AuthenticationExtensions
         var sessions = context.HttpContext.RequestServices.GetRequiredService<ISessionRepository>();
         var now = context.HttpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
 
-        if (!await sessions.IsSessionActiveAsync(sessionId, now, context.HttpContext.RequestAborted))
+        // Session validation is a short DB lookup that must not be canceled by a browser
+        // disconnect (navigating away while the JWT is being validated). Using
+        // RequestAborted here makes every aborted image/API request throw
+        // OperationCanceledException through JwtBearerHandler as an unhandled 500
+        // and triggers VS first-chance breaks. Use None so it always completes.
+        try
         {
-            context.HttpContext.RequestServices
-                .GetRequiredService<ILoggerFactory>()
-                .CreateLogger("Auth.SessionValidation")
-                .LogInformation("Rejected a token for inactive session {SessionId}.", sessionId);
+            if (!await sessions.IsSessionActiveAsync(sessionId, now, CancellationToken.None))
+            {
+                context.HttpContext.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("Auth.SessionValidation")
+                    .LogInformation("Rejected a token for inactive session {SessionId}.", sessionId);
 
-            context.Fail("The session is no longer active.");
+                context.Fail("The session is no longer active.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Fallback in case the DB itself cancels — treat as auth not validated, no 500.
         }
     }
 

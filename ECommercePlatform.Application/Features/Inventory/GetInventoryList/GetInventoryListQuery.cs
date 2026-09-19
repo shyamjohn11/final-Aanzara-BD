@@ -12,6 +12,12 @@ public sealed record GetInventoryListQuery : IQuery<Result<PagedResult<Inventory
 
     public Guid? ProductId { get; init; }
 
+    public string? Search { get; init; }
+
+    public string? Status { get; init; }
+
+    public string? Category { get; init; }
+
     [Range(1, int.MaxValue)]
     public int Page { get; init; } = 1;
 
