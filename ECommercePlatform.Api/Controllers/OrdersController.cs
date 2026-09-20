@@ -7,6 +7,7 @@ using ECommercePlatform.Application.Features.Orders.CancelOrder;
 using ECommercePlatform.Application.Features.Orders.ConfirmOrderPayment;
 using ECommercePlatform.Application.Features.Orders.GetMyOrders;
 using ECommercePlatform.Application.Features.Orders.GetOrderById;
+using ECommercePlatform.Application.Features.Orders.GetOrderTracking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -82,6 +83,19 @@ public sealed class OrdersController : ApiControllerBase
         var result = await Sender.Send(
             new ConfirmOrderPaymentCommand(userId, orderId, request?.TransactionReference), cancellationToken);
 
+        return ToResponse(result);
+    }
+
+    /// <summary>Live tracking: current status, shipment, timeline, progress. Poll every 5-10s.</summary>
+    [HttpGet("{orderId:guid}/tracking")]
+    [ProducesResponseType(typeof(OrderTrackingResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrderTrackingResponse>> Tracking(
+        Guid orderId, CancellationToken cancellationToken)
+    {
+        if (_currentUser.UserId is not { } userId)
+            return ToProblem(OrderErrors.NotAuthenticated);
+        var result = await Sender.Send(new GetOrderTrackingQuery(userId, orderId), cancellationToken);
         return ToResponse(result);
     }
 

@@ -32,7 +32,8 @@ public sealed class CreateBannerForm
     [Required]
     public string? EndDate { get; init; }
 
-    /// <summary>Required on create; omit on update to keep the old image.</summary>
+    /// <summary>Stored upload (png/jpeg/webp ≤2 MB). Required on create; omit on update to keep the stored file. Replaces the former Image Link URL text field.</summary>
+    [Required(ErrorMessage = "Banner image file is required. Upload a PNG, JPEG or WEBP (≤2 MB).")]
     public IFormFile? Image { get; init; }
 }
 

@@ -118,7 +118,12 @@ public sealed class AdminBannersController : ApiControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
         => ToNoContent(await Sender.Send(new DeleteBannerCommand(id), ct));
 
-    /// <summary>Streams the banner's stored image file, resolved by banner id alone.</summary>
+    /// <summary>Streams the banner's stored image file, resolved by banner id alone.
+    /// AllowAnonymous so the public storefront shelf (Hero/SeasonalOffers/PromoTilesRow
+    /// via GetActiveBanners) can render via the stable /api/admin/banners/{id}/image/file
+    /// fallback even when the direct /uploads/Banners/... static URL is not yet cached.
+    /// Stored URLs themselves remain public via /uploads static files as well.</summary>
+    [AllowAnonymous]
     [HttpGet("{id:guid}/image/file")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

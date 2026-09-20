@@ -4,6 +4,9 @@ using ECommercePlatform.Application;
 using ECommercePlatform.Application.BulkImport;
 using ECommercePlatform.Infrastructure;
 using ECommercePlatform.Infrastructure.Services;
+using ECommercePlatform.Infrastructure.Storage;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using OfficeOpenXml;
 using System.Net;
 using System.Net.Sockets;
@@ -108,6 +111,30 @@ builder.Services.AddScoped<IBulkImportService, BulkImportService>();
 
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // Serve uploaded banner/product/brand images from the local Uploads folder
+    // at /uploads/* so that BannerResponse ImageUrl values like "/uploads/Banners/xyz.jpg"
+    // are directly reachable (and proxied by Frontend next.config.js rewrites /uploads/:path*).
+    {
+        var fileStorage = app.Services.GetRequiredService<IOptions<FileStorageOptions>>().Value;
+        var uploadsRoot = fileStorage.RootPath;
+        if (!Path.IsPathRooted(uploadsRoot))
+            uploadsRoot = Path.Combine(app.Environment.ContentRootPath, uploadsRoot);
+        Directory.CreateDirectory(uploadsRoot);
+
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(uploadsRoot),
+            RequestPath = "/uploads",
+            ServeUnknownFileTypes = false,
+            OnPrepareResponse = ctx =>
+            {
+                // Banner/product images are immutable per GUID filename; allow caching but force
+                // revalidation so a re-upload under same logical banner id eventually updates.
+                ctx.Context.Response.Headers.CacheControl = "public,max-age=3600,must-revalidate";
+            }
+        });
+    }
 
     app.MapControllers();
 

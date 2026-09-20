@@ -73,7 +73,9 @@ public sealed class SmtpEmailService : IEmailService
 
             if (!string.IsNullOrWhiteSpace(_options.Username) && !string.IsNullOrWhiteSpace(_options.AppPassword))
             {
-                client.Credentials = new NetworkCredential(_options.Username, _options.AppPassword);
+                // Gmail app passwords are often pasted with spaces (xbnh anck ...); strip them for SMTP auth.
+                var cleanPassword = _options.AppPassword.Replace(" ", string.Empty).Trim();
+                client.Credentials = new NetworkCredential(_options.Username.Trim(), cleanPassword);
             }
 
             await client.SendMailAsync(message, cancellationToken);
@@ -82,6 +84,31 @@ public sealed class SmtpEmailService : IEmailService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email to {Recipient} via SMTP ({Host}:{Port}).", recipientEmail, _options.Host, _options.Port);
+
+            // In Development the OTP is time-sensitive (10 min, single-use). If SMTP is
+            // unreachable (firewall, wrong app password), still surface the rendered
+            // email in logs so testers can retrieve the code without blocking the
+            // password-reset flow — then rethrow in Production so the caller sees 500.
+            if (_environment.IsDevelopment())
+            {
+                _logger.LogWarning(
+                    """
+                    ================== TRANSACTIONAL EMAIL (FALLBACK LOG — SMTP FAILED) ==================
+                    To: {Recipient}
+                    From: {Sender} <{SenderEmail}>
+                    Subject: {Subject}
+                    Body:
+                    {Body}
+                    ========================================================================================
+                    """,
+                    recipientEmail,
+                    _options.SenderName,
+                    _options.SenderEmail,
+                    subject,
+                    htmlBody);
+                return;
+            }
+
             throw;
         }
     }

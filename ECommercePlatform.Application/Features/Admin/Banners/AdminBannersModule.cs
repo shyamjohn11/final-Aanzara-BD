@@ -229,12 +229,29 @@ internal static class BannerValidation
 
 internal static class BannerMappings
 {
+    private static string? NormalizeStoredUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+        var trimmed = url.Trim();
+        // Stored URLs historically used http://192.168.31.9:5000/uploads/... (PublicBaseUrl)
+        // — normalize any absolute URL that contains /uploads/ to a same-origin relative path
+        // so it resolves via the /uploads static files and the Next.js /uploads/:path* proxy.
+        var idx = trimmed.IndexOf("/uploads/", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var path = trimmed[idx..];
+            // Ensure leading slash
+            return path.StartsWith("/") ? path : "/" + path;
+        }
+        return trimmed;
+    }
+
     internal static BannerResponse ToDto(this Banner banner) => new()
     {
         Id = banner.Id,
         Title = banner.Title,
         Subtitle = banner.Subtitle,
-        ImageUrl = banner.ImageUrl,
+        ImageUrl = NormalizeStoredUrl(banner.ImageUrl),
         Link = banner.Link,
         Position = banner.Position,
         Status = banner.Status,
