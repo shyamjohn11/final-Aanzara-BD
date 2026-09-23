@@ -31,19 +31,39 @@ public sealed class LogoutCommandHandler : ICommandHandler<LogoutCommand, Result
             return Result.Failure(AuthErrors.SessionNotFound);
         }
 
-        var session = await _sessions.GetOwnedSessionAsync(request.UserId, sessionId, cancellationToken);
+        // Logout is a terminal user intent — even if the browser aborts the
+        // HTTP request (navigation, tab close, fetch aborted), the session must
+        // still be revoked. Use CancellationToken.None for the critical DB work
+        // so a client-side OperationCanceledException doesn't leave the session
+        // alive. The passed token is still observed at the start.
+        cancellationToken.ThrowIfCancellationRequested();
 
-        if (session is null)
+        try
         {
-            return Result.Failure(AuthErrors.SessionNotFound);
+            var session = await _sessions.GetOwnedSessionAsync(request.UserId, sessionId, CancellationToken.None);
+
+            if (session is null)
+            {
+                return Result.Failure(AuthErrors.SessionNotFound);
+            }
+
+            session.Revoke(_timeProvider.GetUtcNow(), "logout");
+            await _unitOfWork.SaveChangesAsync(CancellationToken.None);
+
+            _logger.LogInformation(
+                "User {UserId} logged out of session {SessionId}.", request.UserId, session.Id);
+
+            return Result.Success();
         }
-
-        session.Revoke(_timeProvider.GetUtcNow(), "logout");
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation(
-            "User {UserId} logged out of session {SessionId}.", request.UserId, session.Id);
-
-        return Result.Success();
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Request was aborted after we already started the DB work with
+            // CancellationToken.None — treat as success so the client doesn't
+            // retry and the session is still revoked. Logged at Debug, not Error.
+            _logger.LogDebug(
+                "Logout for user {UserId} was canceled by the client after the session was revoked. Treating as success.",
+                request.UserId);
+            return Result.Success();
+        }
     }
 }

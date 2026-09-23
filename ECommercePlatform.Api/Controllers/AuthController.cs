@@ -136,11 +136,22 @@ public sealed class AuthController : ApiControllerBase
                 return ToProblem(AuthErrors.InvalidCredentials);
             }
 
-            var result = await Sender.Send(
-                new LogoutCommand { UserId = userId, SessionId = _currentUser.SessionId },
-                cancellationToken);
+            try
+            {
+                var result = await Sender.Send(
+                    new LogoutCommand { UserId = userId, SessionId = _currentUser.SessionId },
+                    cancellationToken);
 
-            return ToNoContent(result);
+                return ToNoContent(result);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                // Browser navigated/closed the tab while logout was in flight.
+                // The handler already revoked the session with CancellationToken.None,
+                // so we can safely report success without a body.
+                _logger.LogDebug("Logout request was canceled by the client — session already revoked, returning 204.");
+                return NoContent();
+            }
         }
         finally
         {
