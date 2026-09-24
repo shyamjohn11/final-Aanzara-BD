@@ -80,6 +80,7 @@ public static class CatalogMappings
         ProductName = p.ProductName,
         Sku = p.Sku,
         Description = p.Description,
+        Specification = p.Specification,
         Price = p.Price,
         Mrp = p.Mrp,
         Discount = p.Discount,

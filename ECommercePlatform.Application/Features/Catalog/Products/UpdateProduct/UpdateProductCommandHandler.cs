@@ -63,6 +63,7 @@ public sealed class UpdateProductCommandHandler
         product.ProductName = request.ProductName.Trim();
         product.Sku = sku;
         product.Description = request.Description?.Trim();
+        product.Specification = request.Specification?.Trim();
         product.Price = request.Price;
         product.Mrp = request.Mrp;
         product.Discount = request.Discount;

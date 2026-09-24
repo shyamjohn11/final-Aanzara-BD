@@ -62,6 +62,10 @@ public sealed class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnName("description")
             .HasColumnType("text");
 
+        builder.Property(p => p.Specification)
+            .HasColumnName("specification")
+            .HasColumnType("text");
+
         builder.Property(p => p.Price).HasColumnName("price").HasColumnType(MoneyType);
         builder.Property(p => p.Mrp).HasColumnName("mrp").HasColumnType(MoneyType);
         builder.Property(p => p.Discount).HasColumnName("discount").HasColumnType("decimal(5,2)");

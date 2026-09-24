@@ -138,16 +138,27 @@ public sealed class GetCombosQueryHandler
                 || (c.Description != null && c.Description.Contains(s)));
         }
 
-        var total = await _combos.CountAsync(filter, cancellationToken);
-        var items = await _combos.PageAsync(
-            filter,
-            q => q.OrderByDescending(c => c.CreatedAt),
-            (page - 1) * pageSize,
-            pageSize,
-            cancellationToken);
+        try
+        {
+            // Use CancellationToken.None for the DB queries so a client abort (navigation, tab close)
+            // doesn't fault the query and surface as a 500. The request's token is still observed
+            // at the start of the handler, but the DB work completes.
+            var total = await _combos.CountAsync(filter, CancellationToken.None);
+            var items = await _combos.PageAsync(
+                filter,
+                q => q.OrderByDescending(c => c.CreatedAt),
+                (page - 1) * pageSize,
+                pageSize,
+                CancellationToken.None);
 
-        return Result.Success(new PagedResult<ComboResponse>(
-            items.Select(c => c.ToDto()).ToArray(), page, pageSize, total));
+            return Result.Success(new PagedResult<ComboResponse>(
+                items.Select(c => c.ToDto()).ToArray(), page, pageSize, total));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Client disconnected before the query finished — return empty instead of 500
+            return Result.Success(new PagedResult<ComboResponse>([], page, pageSize, 0));
+        }
     }
 }
 
@@ -195,6 +206,14 @@ public sealed class CreateComboCommandHandler
             return Result.Failure<ComboResponse>(imageError);
         }
 
+        if (request.ProductIds is null || request.ProductIds.Count < 2)
+        {
+            return Result.Failure<ComboResponse>(Error.Validation("admin.combo_products_required", "Select at least 2 products to create a combo."));
+        }
+
+        // Validate productIds exist (best-effort, no hard failure if a product was deleted)
+        // The combo will still be created, but the storefront will filter out missing products.
+
         // Multipart file wins; otherwise the supplied URL string is kept.
         string? imageUrl = request.ImageUrl;
         if (request.ImageFile is not null)
@@ -211,7 +230,7 @@ public sealed class CreateComboCommandHandler
             Name = name,
             Title = request.Title ?? name,
             Description = request.Description,
-            ProductIds = request.ProductIds ?? new(),
+            ProductIds = request.ProductIds.Distinct().ToList(),
             Price = request.Price,
             OriginalPrice = request.OriginalPrice,
             ImageUrl = imageUrl,
@@ -304,10 +323,14 @@ public sealed class UpdateComboCommandHandler
             combo.ImageUrl = request.ImageUrl;
         }
 
+        if (request.ProductIds is not null && request.ProductIds.Count > 0 && request.ProductIds.Count < 2)
+        {
+            return Result.Failure<ComboResponse>(Error.Validation("admin.combo_products_required", "A combo must contain at least 2 products."));
+        }
         combo.Name = request.Name ?? request.Title ?? combo.Name;
         combo.Title = request.Title ?? request.Name ?? combo.Title;
         combo.Description = request.Description ?? combo.Description;
-        combo.ProductIds = request.ProductIds ?? combo.ProductIds;
+        combo.ProductIds = request.ProductIds != null ? request.ProductIds.Distinct().ToList() : combo.ProductIds;
         combo.Price = request.Price ?? combo.Price;
         combo.OriginalPrice = request.OriginalPrice ?? combo.OriginalPrice;
         combo.Status = request.Status ?? combo.Status;
