@@ -152,6 +152,7 @@ public sealed class CreateDealerProductCommandHandler(
             ProductName = request.ProductName.Trim(),
             Sku = sku,
             Description = request.Description?.Trim(),
+            Specification = request.Specification?.Trim(),
             Price = request.Price,
             Mrp = request.Mrp,
             Discount = request.Discount,
@@ -226,6 +227,7 @@ public sealed class UpdateDealerProductCommandHandler(
         product.ProductName = request.ProductName.Trim();
         product.Sku = sku;
         product.Description = request.Description?.Trim();
+        product.Specification = request.Specification?.Trim();
         product.Price = request.Price;
         product.Mrp = request.Mrp;
         product.Discount = request.Discount;

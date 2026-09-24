@@ -63,14 +63,21 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
 
             return response;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
-            // Client disconnected (browser navigated, tab closed, timeout).
-            // Not an application error — don't log as Error, just Debug.
             _logger.LogDebug(
+                ex,
+                "{Kind} {Name} was canceled by the client after {Elapsed:0.0} ms.",
+                kind, name, Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
+            // Propagate as TaskCanceled so the HTTP pipeline can translate to 499 without a stack trace
+            throw new TaskCanceledException($"{kind} {name} was canceled.", ex);
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogDebug(
+                ex,
                 "{Kind} {Name} was canceled after {Elapsed:0.0} ms.",
                 kind, name, Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);
-
             throw;
         }
         catch (Exception ex)

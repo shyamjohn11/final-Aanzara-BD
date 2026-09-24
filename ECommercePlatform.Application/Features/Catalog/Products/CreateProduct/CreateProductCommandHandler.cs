@@ -60,6 +60,7 @@ public sealed class CreateProductCommandHandler
             ProductName = request.ProductName.Trim(),
             Sku = sku,
             Description = request.Description?.Trim(),
+            Specification = request.Specification?.Trim(),
             Price = request.Price,
             Mrp = request.Mrp,
             Discount = request.Discount,

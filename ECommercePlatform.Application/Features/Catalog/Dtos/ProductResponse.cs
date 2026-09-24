@@ -10,6 +10,7 @@ public sealed record ProductResponse
     public string ProductName { get; init; } = string.Empty;
     public string Sku { get; init; } = string.Empty;
     public string? Description { get; init; }
+    public string? Specification { get; init; }
     public decimal Price { get; init; }
     public decimal Mrp { get; init; }
     public decimal Discount { get; init; }

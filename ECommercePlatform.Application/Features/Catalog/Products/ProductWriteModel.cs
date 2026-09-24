@@ -25,6 +25,9 @@ public abstract record ProductWriteModel
     [MaxLength(2000)]
     public string? Description { get; init; }
 
+    [MaxLength(5000)]
+    public string? Specification { get; init; }
+
     [Range(0, 99999999.99)]
     public decimal Price { get; init; }
 

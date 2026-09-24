@@ -31,6 +31,8 @@ public class Product : AuditableEntity
 
     public string? Description { get; set; }
 
+    public string? Specification { get; set; }
+
     // Money is decimal, never double: binary floating point cannot represent
     // most currency values exactly.
     public decimal Price { get; set; }
