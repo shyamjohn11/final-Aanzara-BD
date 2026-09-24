@@ -10,6 +10,11 @@ public static class WarehouseMappings
         WarehouseId = w.WarehouseId,
         WarehouseName = w.WarehouseName,
         Address = w.Address,
+        City = w.City,
+        State = w.State,
+        Pincode = w.Pincode,
+        Latitude = w.Latitude,
+        Longitude = w.Longitude,
         Status = w.Status,
         CreatedAt = w.CreatedAt,
         UpdatedAt = w.UpdatedAt

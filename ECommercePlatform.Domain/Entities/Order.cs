@@ -25,6 +25,25 @@ namespace ECommercePlatform.Domain.Entities
 
         public Guid? AppliedCouponId { get; set; }
 
+        // Warehouse-wise fulfillment: nearest warehouse selected based on customer location
+        public Guid? FulfilledByWarehouseId { get; set; }
+
+        public Warehouse? FulfilledByWarehouse { get; set; }
+
+        // Dealer shop fulfillment: when order contains dealer products
+        public Guid? DealerId { get; set; }
+
+        public Dealer? Dealer { get; set; }
+
+        // Live tracking
+        public string? TrackingNumber { get; set; }
+
+        public string? CourierName { get; set; }
+
+        public DateTimeOffset? EstimatedDeliveryDate { get; set; }
+
+        public string? CurrentLocation { get; set; }
+
         // Navigation
         public User User { get; set; } = null!;
 

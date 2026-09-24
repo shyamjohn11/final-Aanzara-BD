@@ -39,6 +39,11 @@ public sealed class CreateWarehouseCommandHandler
             WarehouseId = Guid.NewGuid(),
             WarehouseName = name,
             Address = request.Address?.Trim(),
+            City = request.City?.Trim(),
+            State = request.State?.Trim(),
+            Pincode = request.Pincode?.Trim(),
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
             Status = request.Status
         };
 

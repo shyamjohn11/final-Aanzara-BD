@@ -92,6 +92,11 @@ public sealed class AdminWarehousesController : ApiControllerBase
             {
                 WarehouseName = request.WarehouseName,
                 Address = request.Address,
+                City = request.City,
+                State = request.State,
+                Pincode = request.Pincode,
+                Latitude = request.Latitude,
+                Longitude = request.Longitude,
                 Status = request.Status
             };
 
@@ -133,6 +138,11 @@ public sealed class AdminWarehousesController : ApiControllerBase
                 WarehouseId = warehouseId,
                 WarehouseName = request.WarehouseName,
                 Address = request.Address,
+                City = request.City,
+                State = request.State,
+                Pincode = request.Pincode,
+                Latitude = request.Latitude,
+                Longitude = request.Longitude,
                 Status = request.Status
             };
 

@@ -115,10 +115,18 @@ public sealed class GetDashboardStatsQueryHandler(
                 AccountsPct: 85));
         }
 
-        var chart2 = recent
+        // Sales chart — always 7 points for the selected window (last 7 days),
+        // filling missing days with 0 so the UI never shows 4 equal bars.
+        var grouped = recent
             .GroupBy(o => o.CreatedAt.Date)
-            .OrderBy(g => g.Key)
-            .Select(g => new SalesPointDto(g.Key.ToString("ddd"), g.Sum(o => o.GrandTotal)))
+            .ToDictionary(g => g.Key, g => g.Sum(o => o.GrandTotal));
+        var chart2 = Enumerable.Range(0, 7)
+            .Select(offset =>
+            {
+                var date = from.Date.AddDays(offset);
+                var total = grouped.TryGetValue(date, out var sum) ? sum : 0m;
+                return new SalesPointDto(date.ToString("ddd"), total);
+            })
             .ToList();
 
         var totalForPct = recent.Count;

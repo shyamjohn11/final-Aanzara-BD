@@ -14,6 +14,16 @@ namespace ECommercePlatform.Domain.Entities
 
         public decimal UnitPrice { get; set; }
 
+        // Warehouse-wise allocation for company products
+        public Guid? AllocatedWarehouseId { get; set; }
+
+        public Warehouse? AllocatedWarehouse { get; set; }
+
+        // Dealer shop allocation for dealer products
+        public Guid? DealerId { get; set; }
+
+        public Dealer? Dealer { get; set; }
+
         // Navigation
         public Order Order { get; set; } = null!;
 

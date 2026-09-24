@@ -25,6 +25,26 @@ namespace ECommercePlatform.Infrastructure.Configurations
                 .HasColumnName("address")
                 .HasMaxLength(255);
 
+            builder.Property(x => x.City)
+                .HasColumnName("city")
+                .HasMaxLength(100);
+
+            builder.Property(x => x.State)
+                .HasColumnName("state")
+                .HasMaxLength(100);
+
+            builder.Property(x => x.Pincode)
+                .HasColumnName("pincode")
+                .HasMaxLength(20);
+
+            builder.Property(x => x.Latitude)
+                .HasColumnName("latitude")
+                .HasColumnType("float");
+
+            builder.Property(x => x.Longitude)
+                .HasColumnName("longitude")
+                .HasColumnType("float");
+
             builder.Property(x => x.Status)
                 .HasColumnName("status")
                 .HasConversion<string>()
