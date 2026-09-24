@@ -50,6 +50,17 @@ public sealed record OrderDetailResponse
     public PaymentInfoResponse? Payment { get; init; }
     public IReadOnlyCollection<OrderStatusEventResponse> StatusHistory { get; init; } = [];
     public DateTimeOffset CreatedAt { get; init; }
+    // Warehouse-wise dispatch
+    public Guid? FulfilledByWarehouseId { get; init; }
+    public string? WarehouseName { get; init; }
+    // Dealer shop order
+    public Guid? DealerId { get; init; }
+    public string? DealerShopName { get; init; }
+    // Live tracking
+    public string? TrackingNumber { get; init; }
+    public string? CourierName { get; init; }
+    public DateTimeOffset? EstimatedDeliveryDate { get; init; }
+    public string? CurrentLocation { get; init; }
 }
 
 public sealed record PaymentInfoResponse

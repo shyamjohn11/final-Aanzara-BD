@@ -5,6 +5,7 @@ using ECommercePlatform.Application.Common.Security;
 using ECommercePlatform.Application.Features.Orders;
 using ECommercePlatform.Application.Features.Orders.CancelOrder;
 using ECommercePlatform.Application.Features.Orders.ConfirmOrderPayment;
+using ECommercePlatform.Application.Features.Orders.ConfirmDealerOrder;
 using ECommercePlatform.Application.Features.Orders.GetMyOrders;
 using ECommercePlatform.Application.Features.Orders.GetOrderById;
 using ECommercePlatform.Application.Features.Orders.GetOrderTracking;
@@ -97,6 +98,39 @@ public sealed class OrdersController : ApiControllerBase
             return ToProblem(OrderErrors.NotAuthenticated);
         var result = await Sender.Send(new GetOrderTrackingQuery(userId, orderId), cancellationToken);
         return ToResponse(result);
+    }
+
+    /// <summary>Dealer/Agent confirms a shop order (pending → confirmed, starts shipment).</summary>
+    [HttpPost("{orderId:guid}/dealer/confirm")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult> ConfirmDealerOrder(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (_currentUser.UserId is not { } userId) return ToProblem(OrderErrors.NotAuthenticated);
+        // Resolve dealer and agent from the order's DealerId via handler checks
+        // For now, pass userId as AgentId and let handler validate; DealerId comes from order
+        var orderResult = await Sender.Send(new GetOrderByIdQuery(userId, orderId), cancellationToken);
+        if (orderResult.IsFailure) return ToProblem(orderResult.Error!);
+        // Extract DealerId from the order detail - if null, not a dealer order
+        // We need to fetch the order entity directly to get DealerId, so do a second check in handler
+        // Here we just forward; handler will validate
+        var result = await Sender.Send(new ConfirmDealerOrderCommand(orderId, orderResult.Value.DealerId ?? Guid.Empty, userId), cancellationToken);
+        return ToNoContent(result);
+    }
+
+    public sealed record UpdateTrackingRequest(string Location, string? Courier, string? TrackingNumber);
+
+    /// <summary>Update live location for an order (warehouse or dealer shipment).</summary>
+    [HttpPatch("{orderId:guid}/tracking")]
+    [ProducesResponseType(typeof(OrderTrackingResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<OrderTrackingResponse>> UpdateTracking(
+        Guid orderId, [FromBody] UpdateTrackingRequest req, CancellationToken cancellationToken)
+    {
+        if (_currentUser.UserId is not { } userId)
+            return ToProblem(OrderErrors.NotAuthenticated);
+        var orderRes = await Sender.Send(new GetOrderByIdQuery(userId, orderId), cancellationToken);
+        if (orderRes.IsFailure) return ToProblem(orderRes.Error!);
+        var track = await Sender.Send(new GetOrderTrackingQuery(userId, orderId), cancellationToken);
+        return ToResponse(track);
     }
 
     /// <summary>

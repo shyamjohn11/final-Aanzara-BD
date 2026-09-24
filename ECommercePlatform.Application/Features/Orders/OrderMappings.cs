@@ -85,7 +85,15 @@ internal static class OrderMappings
                     ChangedAt = h.ChangedAt
                 })
                 .ToList(),
-            CreatedAt = order.CreatedAt
+            CreatedAt = order.CreatedAt,
+            FulfilledByWarehouseId = order.FulfilledByWarehouseId,
+            WarehouseName = order.FulfilledByWarehouse?.WarehouseName,
+            DealerId = order.DealerId,
+            DealerShopName = order.Dealer?.ShopName,
+            TrackingNumber = order.TrackingNumber,
+            CourierName = order.CourierName,
+            EstimatedDeliveryDate = order.EstimatedDeliveryDate,
+            CurrentLocation = order.CurrentLocation
         };
     }
 

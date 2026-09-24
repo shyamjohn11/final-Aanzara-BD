@@ -72,6 +72,32 @@ namespace ECommercePlatform.Infrastructure.Configurations
                 .HasColumnType("char(36)")
                 .IsRequired(false);
 
+            // Warehouse-wise fulfillment
+            builder.Property(x => x.FulfilledByWarehouseId)
+                .HasColumnName("fulfilledByWarehouseId")
+                .HasColumnType("char(36)")
+                .IsRequired(false);
+
+            builder.Property(x => x.DealerId)
+                .HasColumnName("dealerId")
+                .HasColumnType("char(36)")
+                .IsRequired(false);
+
+            builder.Property(x => x.TrackingNumber)
+                .HasColumnName("trackingNumber")
+                .HasMaxLength(50);
+
+            builder.Property(x => x.CourierName)
+                .HasColumnName("courierName")
+                .HasMaxLength(100);
+
+            builder.Property(x => x.EstimatedDeliveryDate)
+                .HasColumnName("estimatedDeliveryDate");
+
+            builder.Property(x => x.CurrentLocation)
+                .HasColumnName("currentLocation")
+                .HasMaxLength(255);
+
             // Created At
             builder.Property(x => x.CreatedAt)
                 .HasColumnName("createdAt")
@@ -92,6 +118,18 @@ namespace ECommercePlatform.Infrastructure.Configurations
             builder.HasOne(x => x.AppliedCoupon)
                 .WithMany()
                 .HasForeignKey(x => x.AppliedCouponId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Warehouse → Orders
+            builder.HasOne(x => x.FulfilledByWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.FulfilledByWarehouseId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // Dealer → Orders
+            builder.HasOne(x => x.Dealer)
+                .WithMany()
+                .HasForeignKey(x => x.DealerId)
                 .OnDelete(DeleteBehavior.SetNull);
 
             // Order → OrderItems

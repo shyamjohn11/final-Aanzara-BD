@@ -1,78 +1,59 @@
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
-using ECommercePlatform.Application.Features.Orders;
-using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
 
 namespace ECommercePlatform.Application.Features.Orders.GetOrderTracking;
 
 public sealed class GetOrderTrackingQueryHandler(
-    IOrderRepository orders) : IQueryHandler<GetOrderTrackingQuery, Result<OrderTrackingResponse>>
+    IOrderRepository orders,
+    IWarehouseRepository warehouses,
+    IAdminRepository<ECommercePlatform.Domain.Entities.Dealer> dealers) : IQueryHandler<GetOrderTrackingQuery, Result<OrderTrackingResponse>>
 {
-    // Order flow for progress: Pending -> Confirmed -> Shipped -> Delivered
-    private static readonly string[] Flow = ["Pending", "Confirmed", "Shipped", "OutForDelivery", "Delivered"];
-
-    public async Task<Result<OrderTrackingResponse>> Handle(
-        GetOrderTrackingQuery request, CancellationToken cancellationToken)
+    public async Task<Result<OrderTrackingResponse>> Handle(GetOrderTrackingQuery request, CancellationToken cancellationToken)
     {
         var order = await orders.GetByIdAsync(request.OrderId, cancellationToken);
-        if (order is null || order.UserId != request.UserId)
+        if (order is null) return Result.Failure<OrderTrackingResponse>(OrderErrors.NotFound);
+        if (order.UserId != request.UserId)
+        {
+            // Admin can see any, but for customer ensure ownership; for now check user
+            // Allow admin to bypass? For simplicity, allow if not owner but return not found
+            // Actually we will allow any authenticated user to see own orders only
             return Result.Failure<OrderTrackingResponse>(OrderErrors.NotFound);
+        }
 
-        var status = order.OrderStatus.ToString();
+        string warehouseName = string.Empty;
+        if (order.FulfilledByWarehouseId.HasValue)
+        {
+            var wh = await warehouses.GetByIdAsync(order.FulfilledByWarehouseId.Value, cancellationToken);
+            warehouseName = wh?.WarehouseName ?? string.Empty;
+        }
+
+        string dealerShop = string.Empty;
+        if (order.DealerId.HasValue)
+        {
+            var d = await dealers.GetByIdAsync(order.DealerId.Value, cancellationToken);
+            dealerShop = d?.ShopName ?? string.Empty;
+        }
+
         var history = order.StatusHistory
             .OrderBy(h => h.ChangedAt)
-            .Select(h => new OrderStatusEventResponse
-            {
-                Status = h.Status.ToString(),
-                Remarks = h.Remarks,
-                ChangedAt = h.ChangedAt
-            }).ToArray();
+            .Select(h => new TrackingEventDto(
+                h.Status.ToString(),
+                h.Remarks ?? string.Empty,
+                order.CurrentLocation ?? string.Empty,
+                h.ChangedAt))
+            .ToList();
 
-        // Shipments are stored separately; for live tracking we synthesize from order status
-        // (no extra DB round-trip needed for the demo flow). Real courier integration would
-        // hydrate from Shipments/DeliveryAssignments here.
-        var shipInfo = new ShipmentTrackingInfo
-        {
-            CourierName = "Aanzara Logistics",
-            TrackingNumber = $"TRK-{order.OrderId.ToString("N")[..8].ToUpperInvariant()}",
-            Status = MapShipmentStatus(status),
-            ShippedAt = status is "Shipped" or "OutForDelivery" or "Delivered" ? order.UpdatedAt.UtcDateTime : null,
-            EstimatedDelivery = order.CreatedAt.AddDays(4).UtcDateTime,
-            DeliveredAt = status == "Delivered" ? order.UpdatedAt.UtcDateTime : null
-        };
-
-        var idx = Array.FindIndex(Flow, s => string.Equals(s, status, StringComparison.OrdinalIgnoreCase));
-        if (idx < 0 && status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)) idx = -1;
-        var progress = status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) ? 0 :
-                       status.Equals("Delivered", StringComparison.OrdinalIgnoreCase) ? 100 :
-                       idx < 0 ? 15 : (int)Math.Round((idx + 1) / (double)Flow.Length * 100);
-
-        var etaText = shipInfo.EstimatedDelivery.HasValue
-            ? shipInfo.EstimatedDelivery.Value.ToString("MMM dd") + $" · {shipInfo.CourierName}"
-            : "—";
-
-        return Result.Success(new OrderTrackingResponse
-        {
-            OrderId = order.OrderId,
-            OrderNo = OrderMappings.OrderNoFor(order),
-            Status = status,
-            GrandTotal = order.GrandTotal,
-            Shipment = shipInfo,
-            Timeline = history,
-            ProgressPercent = progress,
-            EstimatedDeliveryText = etaText,
-            UpdatedAt = order.UpdatedAt
-        });
+        return Result.Success(new OrderTrackingResponse(
+            order.OrderId,
+            OrderMappings.OrderNoFor(order),
+            order.OrderStatus.ToString(),
+            order.TrackingNumber ?? string.Empty,
+            order.CourierName ?? string.Empty,
+            order.CurrentLocation ?? string.Empty,
+            order.EstimatedDeliveryDate,
+            warehouseName,
+            dealerShop,
+            history));
     }
-
-    private static string MapShipmentStatus(string orderStatus) => orderStatus switch
-    {
-        "Pending" => "Pending",
-        "Confirmed" => "Processing",
-        "Shipped" => "InTransit",
-        "Delivered" => "Delivered",
-        "Cancelled" => "Cancelled",
-        _ => orderStatus
-    };
 }

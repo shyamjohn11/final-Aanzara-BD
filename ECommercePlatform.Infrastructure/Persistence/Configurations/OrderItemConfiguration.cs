@@ -47,11 +47,38 @@ namespace ECommercePlatform.Infrastructure.Configurations
                 .HasForeignKey(x => x.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Warehouse allocation
+            builder.Property(x => x.AllocatedWarehouseId)
+                .HasColumnName("allocatedWarehouseId")
+                .HasColumnType("char(36)")
+                .IsRequired(false);
+
+            builder.Property(x => x.DealerId)
+                .HasColumnName("dealerId")
+                .HasColumnType("char(36)")
+                .IsRequired(false);
+
+            // Order → OrderItems
+            builder.HasOne(x => x.Order)
+                .WithMany(x => x.OrderItems)
+                .HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // Product → OrderItems
             builder.HasOne(x => x.Product)
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasOne(x => x.AllocatedWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.AllocatedWarehouseId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.HasOne(x => x.Dealer)
+                .WithMany()
+                .HasForeignKey(x => x.DealerId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

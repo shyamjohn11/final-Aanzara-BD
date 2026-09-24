@@ -42,6 +42,11 @@ public sealed class UpdateWarehouseCommandHandler
 
         warehouse.WarehouseName = name;
         warehouse.Address = request.Address?.Trim();
+        warehouse.City = request.City?.Trim();
+        warehouse.State = request.State?.Trim();
+        warehouse.Pincode = request.Pincode?.Trim();
+        warehouse.Latitude = request.Latitude;
+        warehouse.Longitude = request.Longitude;
         warehouse.Status = request.Status;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);

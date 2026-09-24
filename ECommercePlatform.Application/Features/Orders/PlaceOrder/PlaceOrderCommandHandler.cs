@@ -17,9 +17,11 @@ public sealed class PlaceOrderCommandHandler(
     IAddressRepository addresses,
     IUserRepository users,
     IInventoryRepository inventory,
+    IWarehouseRepository warehouses,
     ITaxRuleRepository taxRules,
     IDeliveryRuleRepository deliveryRules,
     IAdminRepository<Notification> notifications,
+    IAdminRepository<ECommercePlatform.Domain.Entities.Dealer> dealers,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider,
     IEmailService emailService,
@@ -59,8 +61,12 @@ public sealed class PlaceOrderCommandHandler(
                 OrderErrors.InsufficientStock(string.Join(", ", stockErrors)));
         }
 
-        // Reuse the cart pricing engine so the order's totals can never drift
-        // from what the cart page displayed at the moment of checkout.
+        // Warehouse-wise: fetch all warehouses and inventories for allocation
+        var warehousePage = await warehouses.SearchAsync(null, null, 1, 100, cancellationToken);
+        var allWarehouses = warehousePage.Items.ToList();
+        var productIds = cart.CartItems.Select(i => i.ProductId).Distinct().ToArray();
+        var inventories = await inventory.GetByProductIdsAsync(productIds, cancellationToken);
+
         var now = timeProvider.GetUtcNow();
         var summary = CartPricing.Summarize(
             cart.CartItems.Select(i => new CartLine(i.Product, i.Quantity)).ToArray(),
@@ -69,33 +75,117 @@ public sealed class PlaceOrderCommandHandler(
             cart.AppliedCoupon,
             now);
 
+        // Determine fulfillment: dealer shops vs warehouses
+        var dealerItems = cart.CartItems.Where(i => i.Product.DealerId.HasValue).ToList();
+        var warehouseItems = cart.CartItems.Where(i => !i.Product.DealerId.HasValue).ToList();
+
+        Guid? primaryWarehouseId = null;
+        Guid? primaryDealerId = null;
+        string? currentLocation = null;
+        var trackingNumber = $"TRK{Guid.NewGuid().ToString("N")[..10].ToUpper()}";
+        var courier = "Aanzara Logistics";
+        var estimatedDelivery = now.AddDays(3);
+
+        if (warehouseItems.Count > 0)
+        {
+            // For each warehouse product, find nearest warehouse with stock
+            foreach (var item in warehouseItems)
+            {
+                var nearest = ECommercePlatform.Application.Services.WarehouseLocator.FindNearest(
+                    allWarehouses,
+                    inventories.ToList(),
+                    item.ProductId,
+                    item.Quantity,
+                    address.City ?? string.Empty,
+                    address.State ?? string.Empty,
+                    address.Latitude == 0 ? null : (double?)address.Latitude,
+                    address.Longitude == 0 ? null : (double?)address.Longitude);
+
+                if (nearest is not null)
+                {
+                    primaryWarehouseId ??= nearest.WarehouseId;
+                    currentLocation ??= $"{nearest.City ?? nearest.WarehouseName}, {nearest.State ?? string.Empty}".Trim().TrimEnd(',');
+
+                    // Reserve stock in that warehouse
+                    var inv = inventories.FirstOrDefault(i => i.ProductId == item.ProductId && i.WarehouseId == nearest.WarehouseId);
+                    if (inv is not null)
+                    {
+                        inv.ReservedQuantity += item.Quantity;
+                    }
+                }
+            }
+            currentLocation ??= primaryWarehouseId.HasValue
+                ? allWarehouses.FirstOrDefault(w => w.WarehouseId == primaryWarehouseId.Value)?.City ?? "Warehouse"
+                : "Warehouse";
+        }
+
+        if (dealerItems.Count > 0)
+        {
+            primaryDealerId = dealerItems.First().Product.DealerId;
+            // Dealer shop location will be used for tracking
+            try
+            {
+                var dealer = await dealers.GetByIdAsync(primaryDealerId.Value, cancellationToken);
+                if (dealer is not null)
+                {
+                    currentLocation = $"{dealer.City ?? dealer.ShopName}, {dealer.State ?? string.Empty}".Trim().TrimEnd(',');
+                }
+            }
+            catch { }
+        }
+
+        var orderStatus = dealerItems.Count > 0 ? OrderStatus.Pending : OrderStatus.Confirmed;
+
         var order = new Order
         {
             OrderId = Guid.NewGuid(),
             UserId = request.UserId,
-            OrderStatus = OrderStatus.Pending,
+            OrderStatus = orderStatus,
             ItemsTotal = summary.Subtotal,
             Discount = summary.DiscountTotal,
             GstAmount = summary.TaxTotal,
             DeliveryCharge = summary.DeliveryCharge,
             HandlingFee = summary.HandlingFee,
             GrandTotal = summary.Total,
-            // Only snapshot the coupon when it actually discounted something;
-            // an expired coupon stays null on the order.
             AppliedCouponId = summary.AppliedCouponCode is null ? null : cart.AppliedCouponId,
+            FulfilledByWarehouseId = primaryWarehouseId,
+            DealerId = primaryDealerId,
+            TrackingNumber = trackingNumber,
+            CourierName = courier,
+            EstimatedDeliveryDate = estimatedDelivery,
+            CurrentLocation = currentLocation ?? address.City,
             CreatedAt = now,
             UpdatedAt = now
         };
 
         foreach (var item in cart.CartItems)
         {
+            Guid? whId = null;
+            Guid? dId = item.Product.DealerId;
+
+            if (!dId.HasValue)
+            {
+                var nearest = ECommercePlatform.Application.Services.WarehouseLocator.FindNearest(
+                    allWarehouses,
+                    inventories.ToList(),
+                    item.ProductId,
+                    item.Quantity,
+                    address.City ?? string.Empty,
+                    address.State ?? string.Empty,
+                    address.Latitude == 0 ? null : (double?)address.Latitude,
+                    address.Longitude == 0 ? null : (double?)address.Longitude);
+                whId = nearest?.WarehouseId;
+            }
+
             order.OrderItems.Add(new OrderItem
             {
                 OrderItemId = Guid.NewGuid(),
                 OrderId = order.OrderId,
                 ProductId = item.ProductId,
                 Quantity = item.Quantity,
-                UnitPrice = item.Product.Price
+                UnitPrice = item.Product.Price,
+                AllocatedWarehouseId = whId,
+                DealerId = dId
             });
         }
 
@@ -123,7 +213,6 @@ public sealed class PlaceOrderCommandHandler(
             OrderId = order.OrderId,
             UserId = request.UserId,
             PaymentMethod = method,
-            // COD collects at the door, so there is no gateway behind it.
             PaymentGateway = method == PaymentMethod.COD ? null : "Manual",
             Amount = order.GrandTotal,
             Currency = "INR",
@@ -133,33 +222,56 @@ public sealed class PlaceOrderCommandHandler(
         };
         orders.AddPayment(payment);
 
+        var initialRemarks = dealerItems.Count > 0
+            ? $"Order placed for dealer shop. Awaiting confirmation from shop. Tracking: {trackingNumber} via {courier}. Nearest dispatch: {currentLocation}."
+            : $"Order confirmed. Tracking: {trackingNumber} via {courier}. Dispatched from {currentLocation}. ETA: {estimatedDelivery:dd MMM yyyy}.";
+
         orders.AddStatusHistory(new OrderStatusHistory
         {
             HistoryId = Guid.NewGuid(),
             OrderId = order.OrderId,
-            Status = OrderStatus.Pending,
+            Status = order.OrderStatus,
             ChangedByUserId = request.UserId,
-            Remarks = "Order placed.",
+            Remarks = initialRemarks,
             ChangedAt = now.UtcDateTime
         });
 
-        // Free the items for re-purchase; the cart row itself stays for reuse.
         foreach (var item in cart.CartItems)
         {
             carts.RemoveItem(item);
         }
 
         var orderNo = OrderMappings.OrderNoFor(order);
+        var notifyMsg = dealerItems.Count > 0
+            ? $"{user.Name} placed a shop order {orderNo} for dealer shop. Please confirm."
+            : $"{user.Name} placed an order {orderNo} of ₹{order.GrandTotal} ({cart.CartItems.Count} items) from nearest warehouse {currentLocation}.";
+
         NotificationEmitter.Emit(
             notifications,
             "order",
             $"New order {orderNo}",
-            $"{user.Name} placed an order of ₹{order.GrandTotal} ({cart.CartItems.Count} items).",
-            "/admin/orders");
+            notifyMsg,
+            dealerItems.Count > 0 ? $"/admin/agents" : "/admin/orders");
 
-        // Snapshot the cart lines for the confirmation email before SaveChanges:
-        // order items only carry ProductId, while the email needs names, and
-        // the in-memory cart objects still hold their Product navs here.
+        // Dealer-specific notification
+        if (primaryDealerId.HasValue)
+        {
+            try
+            {
+                var dealer = await dealers.GetByIdAsync(primaryDealerId.Value, cancellationToken);
+                if (dealer is not null)
+                {
+                    NotificationEmitter.Emit(
+                        notifications,
+                        "dealer_order",
+                        $"New shop order {orderNo}",
+                        $"{user.Name} ordered from your shop {dealer.ShopName}. Please confirm and ship.",
+                        $"/admin/agents/{dealer.AgentId}/dealers/{dealer.Id}");
+                }
+            }
+            catch { }
+        }
+
         var emailLines = cart.CartItems
             .Select(i => new OrderEmailLine(i.Product.ProductName, i.Quantity, i.Product.Price))
             .ToList();
@@ -175,17 +287,14 @@ public sealed class PlaceOrderCommandHandler(
                 address.Pincode
             }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
-        // One save for the order, items, address snapshot, payment, history,
-        // and the emptied cart — checkout either fully happens or not at all.
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        // Best-effort user email + already-saved admin notification row above
-        // complete the order-placed flow. Email failure must never fail checkout.
+        var trackingHtml = $"<p><strong>Tracking:</strong> {trackingNumber} via {courier}<br/><strong>Dispatch:</strong> {currentLocation}<br/><strong>ETA:</strong> {estimatedDelivery:dd MMM yyyy}</p>";
         await OrderEmailSender.TrySendAsync(
             emailService,
             logger,
             user.Email,
-            $"Order {orderNo} confirmed",
+            $"Order {orderNo} confirmed - {trackingNumber}",
             OrderEmailSender.PlaceOrderHtml(
                 user.Name,
                 orderNo,
@@ -200,7 +309,7 @@ public sealed class PlaceOrderCommandHandler(
                 payment.PaymentMethod.ToString(),
                 payment.Status.ToString(),
                 shipTo,
-                addressSummary),
+                addressSummary) + trackingHtml,
             cancellationToken);
 
         return Result.Success(new PlaceOrderResponse
@@ -219,15 +328,16 @@ public sealed class PlaceOrderCommandHandler(
     {
         var productIds = cart.CartItems.Select(i => i.ProductId).Distinct().ToArray();
 
-        var availableByProduct = (await inventory.GetByProductIdsAsync(productIds, cancellationToken))
+        // Dealer products are stocked at the shop, not in warehouse inventory — skip warehouse stock check
+        var warehouseProductIds = cart.CartItems.Where(i => !i.Product.DealerId.HasValue).Select(i => i.ProductId).Distinct().ToArray();
+        if (warehouseProductIds.Length == 0) return Array.Empty<string>();
+
+        var availableByProduct = (await inventory.GetByProductIdsAsync(warehouseProductIds, cancellationToken))
             .GroupBy(i => i.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(i => i.StockQuantity - i.ReservedQuantity));
 
-        // Products with no inventory rows are sellable without a cap (same
-        // rule as the shelf and the cart): only tracked stock can block
-        // checkout, so a missing key means "no limit", not "zero".
         return cart.CartItems
-            .Where(i => availableByProduct.TryGetValue(i.ProductId, out var available) && i.Quantity > available)
+            .Where(i => !i.Product.DealerId.HasValue && availableByProduct.TryGetValue(i.ProductId, out var available) && i.Quantity > available)
             .Select(i => i.Product.ProductName)
             .ToArray();
     }
