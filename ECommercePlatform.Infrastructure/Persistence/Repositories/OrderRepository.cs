@@ -13,6 +13,9 @@ public sealed class OrderRepository : IOrderRepository
 
     public Task<Order?> GetByIdAsync(Guid orderId, CancellationToken cancellationToken)
         => _db.Orders
+            // Split avoids a wide cartesian product when OrderItems × Payments
+            // × StatusHistory all fan out on the same root row.
+            .AsSplitQuery()
             .Include(o => o.User)
             .Include(o => o.AppliedCoupon)
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
@@ -26,8 +29,10 @@ public sealed class OrderRepository : IOrderRepository
     {
         var query = _db.Orders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
             .Include(o => o.Payments)
+            .Include(o => o.StatusHistory)
             .Where(o => o.UserId == userId)
             .OrderByDescending(o => o.CreatedAt);
 
@@ -46,6 +51,7 @@ public sealed class OrderRepository : IOrderRepository
     {
         var query = _db.Orders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(o => o.User)
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
             .Include(o => o.Payments)
@@ -82,6 +88,7 @@ public sealed class OrderRepository : IOrderRepository
     public async Task<IReadOnlyList<Order>> GetRecentAsync(int count, CancellationToken cancellationToken)
         => await _db.Orders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(o => o.User)
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
             .Include(o => o.Payments)
@@ -93,6 +100,7 @@ public sealed class OrderRepository : IOrderRepository
         DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
         => await _db.Orders
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(o => o.User)
             .Include(o => o.OrderItems).ThenInclude(i => i.Product)
             .Include(o => o.Payments)

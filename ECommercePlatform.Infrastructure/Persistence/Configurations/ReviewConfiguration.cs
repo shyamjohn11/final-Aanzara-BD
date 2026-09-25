@@ -26,6 +26,15 @@ namespace ECommercePlatform.Infrastructure.Configurations
                 .HasMaxLength(200)
                 .IsRequired();
 
+            builder.Property(x => x.UserId)
+                .HasColumnName("userId")
+                .HasColumnType("char(36)");
+
+            builder.Property(x => x.IsVerifiedPurchase)
+                .HasColumnName("isVerifiedPurchase")
+                .HasColumnType("bit")
+                .IsRequired();
+
             builder.Property(x => x.Rating)
                 .HasColumnName("rating")
                 .IsRequired();

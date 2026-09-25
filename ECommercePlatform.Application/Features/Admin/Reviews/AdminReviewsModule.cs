@@ -20,8 +20,10 @@ public sealed record ReviewResponse : IAdminEntity
     public Guid Id { get; init; }
     public string ProductName { get; init; } = string.Empty;
     public string CustomerName { get; init; } = string.Empty;
+    public Guid? UserId { get; init; }
     public int Rating { get; init; } = 5;
     public string? Comment { get; init; }
+    public bool IsVerifiedPurchase { get; init; }
     public string Status { get; init; } = "Pending";
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -79,8 +81,10 @@ internal static class ReviewMappings
         Id = review.Id,
         ProductName = review.ProductName,
         CustomerName = review.CustomerName,
+        UserId = review.UserId,
         Rating = review.Rating,
         Comment = review.Comment,
+        IsVerifiedPurchase = review.IsVerifiedPurchase,
         Status = review.Status,
         CreatedAt = review.CreatedAt,
         UpdatedAt = review.UpdatedAt
@@ -239,7 +243,8 @@ public sealed class CreateReviewCommandHandler
             CustomerName = request.CustomerName ?? request.Name ?? "Customer",
             Rating = request.Rating,
             Comment = request.Comment,
-            Status = string.IsNullOrWhiteSpace(request.Status) ? "Pending" : request.Status!
+            // Client-supplied Status is never trusted — storefront creates stay Pending.
+            Status = "Pending"
         };
 
         _reviews.Add(review);

@@ -9,10 +9,14 @@ public sealed class GetLowStockQueryHandler
     : IQueryHandler<GetLowStockQuery, Result<PagedResult<InventoryResponse>>>
 {
     private readonly IInventoryRepository _inventoryRepository;
+    private readonly IProductImageRepository _productImages;
 
-    public GetLowStockQueryHandler(IInventoryRepository inventoryRepository)
+    public GetLowStockQueryHandler(
+        IInventoryRepository inventoryRepository,
+        IProductImageRepository productImages)
     {
         _inventoryRepository = inventoryRepository;
+        _productImages = productImages;
     }
 
     public async Task<Result<PagedResult<InventoryResponse>>> Handle(
@@ -24,8 +28,10 @@ public sealed class GetLowStockQueryHandler
             request.PageSize,
             cancellationToken);
 
+        var items = await page.Items.ToEnrichedResponsesAsync(_productImages, cancellationToken);
+
         return Result.Success(new PagedResult<InventoryResponse>(
-            page.Items.Select(i => i.ToResponse()).ToArray(),
+            items,
             page.Page,
             page.PageSize,
             page.TotalCount));

@@ -55,7 +55,7 @@ public sealed class GetBannerImageFileQueryHandler
         extension.ToLowerInvariant() switch
         {
             ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
+            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
             ".webp" => "image/webp",
             _ => "application/octet-stream"
         };

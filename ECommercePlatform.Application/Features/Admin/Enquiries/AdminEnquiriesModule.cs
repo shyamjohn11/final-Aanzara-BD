@@ -8,6 +8,7 @@ using ECommercePlatform.Application.Features.Admin.Common;
 using ECommercePlatform.Application.Features.Admin.Notifications;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
+using Microsoft.Extensions.Logging;
 
 namespace ECommercePlatform.Application.Features.Admin.Enquiries;
 
@@ -158,12 +159,19 @@ public sealed class UpdateEnquiryStatusCommandHandler
 {
     private readonly IAdminRepository<Enquiry> _enquiries;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<UpdateEnquiryStatusCommandHandler> _logger;
 
     public UpdateEnquiryStatusCommandHandler(
-        IAdminRepository<Enquiry> enquiries, IUnitOfWork unitOfWork)
+        IAdminRepository<Enquiry> enquiries,
+        IUnitOfWork unitOfWork,
+        IEmailService emailService,
+        ILogger<UpdateEnquiryStatusCommandHandler> logger)
     {
         _enquiries = enquiries;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<Result<EnquiryResponse>> Handle(
@@ -182,8 +190,22 @@ public sealed class UpdateEnquiryStatusCommandHandler
                 Error.Validation("admin.status_required", "Status is required."));
         }
 
+        var previous = enquiry.Status;
         enquiry.Status = request.Status.Trim();
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email on real status changes; failure must never
+        // fail the update. Unchanged statuses stay silent (no spam on re-save).
+        if (!string.Equals(previous, enquiry.Status, StringComparison.OrdinalIgnoreCase))
+        {
+            await RequestStatusEmail.TrySendAsync(
+                _emailService,
+                _logger,
+                enquiry.Email,
+                $"Your enquiry is now {enquiry.Status}",
+                RequestStatusEmail.EnquiryHtml(enquiry.Name, enquiry.Subject, enquiry.Status),
+                cancellationToken);
+        }
 
         return Result.Success(enquiry.ToDto());
     }
@@ -267,11 +289,19 @@ public sealed class UpdateEnquiryCommandHandler
 {
     private readonly IAdminRepository<Enquiry> _enquiries;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<UpdateEnquiryCommandHandler> _logger;
 
-    public UpdateEnquiryCommandHandler(IAdminRepository<Enquiry> enquiries, IUnitOfWork unitOfWork)
+    public UpdateEnquiryCommandHandler(
+        IAdminRepository<Enquiry> enquiries,
+        IUnitOfWork unitOfWork,
+        IEmailService emailService,
+        ILogger<UpdateEnquiryCommandHandler> logger)
     {
         _enquiries = enquiries;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<Result<EnquiryResponse>> Handle(
@@ -284,6 +314,8 @@ public sealed class UpdateEnquiryCommandHandler
             return Result.Failure<EnquiryResponse>(AdminErrors.NotFound("Enquiry", request.Id));
         }
 
+        var previous = enquiry.Status;
+
         enquiry.Name = request.Name ?? enquiry.Name;
         enquiry.Email = request.Email ?? enquiry.Email;
         enquiry.Phone = request.Phone ?? enquiry.Phone;
@@ -292,6 +324,19 @@ public sealed class UpdateEnquiryCommandHandler
         enquiry.Status = request.Status ?? enquiry.Status;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email when the edit changed the status.
+        if (request.Status is not null
+            && !string.Equals(previous, enquiry.Status, StringComparison.OrdinalIgnoreCase))
+        {
+            await RequestStatusEmail.TrySendAsync(
+                _emailService,
+                _logger,
+                enquiry.Email,
+                $"Your enquiry is now {enquiry.Status}",
+                RequestStatusEmail.EnquiryHtml(enquiry.Name, enquiry.Subject, enquiry.Status),
+                cancellationToken);
+        }
 
         return Result.Success(enquiry.ToDto());
     }

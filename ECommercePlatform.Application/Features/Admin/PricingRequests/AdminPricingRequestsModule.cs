@@ -8,6 +8,7 @@ using ECommercePlatform.Application.Features.Admin.Common;
 using ECommercePlatform.Application.Features.Admin.Notifications;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
+using Microsoft.Extensions.Logging;
 
 namespace ECommercePlatform.Application.Features.Admin.PricingRequests;
 
@@ -168,12 +169,19 @@ public sealed class UpdatePricingRequestStatusCommandHandler
 {
     private readonly IAdminRepository<PricingRequest> _requests;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<UpdatePricingRequestStatusCommandHandler> _logger;
 
     public UpdatePricingRequestStatusCommandHandler(
-        IAdminRepository<PricingRequest> requests, IUnitOfWork unitOfWork)
+        IAdminRepository<PricingRequest> requests,
+        IUnitOfWork unitOfWork,
+        IEmailService emailService,
+        ILogger<UpdatePricingRequestStatusCommandHandler> logger)
     {
         _requests = requests;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<Result<PricingRequestResponse>> Handle(
@@ -192,8 +200,26 @@ public sealed class UpdatePricingRequestStatusCommandHandler
                 Error.Validation("admin.status_required", "Status is required."));
         }
 
+        var previous = pricingRequest.Status;
         pricingRequest.Status = request.Status.Trim();
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email on real status changes; failure must never
+        // fail the update. Unchanged statuses stay silent.
+        if (!string.Equals(previous, pricingRequest.Status, StringComparison.OrdinalIgnoreCase))
+        {
+            await RequestStatusEmail.TrySendAsync(
+                _emailService,
+                _logger,
+                pricingRequest.Email,
+                $"Your bulk quote request is now {pricingRequest.Status}",
+                RequestStatusEmail.PricingHtml(
+                    pricingRequest.CustomerName,
+                    pricingRequest.Product,
+                    pricingRequest.Quantity,
+                    pricingRequest.Status),
+                cancellationToken);
+        }
 
         return Result.Success(pricingRequest.ToDto());
     }
@@ -279,12 +305,19 @@ public sealed class UpdatePricingRequestCommandHandler
 {
     private readonly IAdminRepository<PricingRequest> _requests;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<UpdatePricingRequestCommandHandler> _logger;
 
     public UpdatePricingRequestCommandHandler(
-        IAdminRepository<PricingRequest> requests, IUnitOfWork unitOfWork)
+        IAdminRepository<PricingRequest> requests,
+        IUnitOfWork unitOfWork,
+        IEmailService emailService,
+        ILogger<UpdatePricingRequestCommandHandler> logger)
     {
         _requests = requests;
         _unitOfWork = unitOfWork;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     public async Task<Result<PricingRequestResponse>> Handle(
@@ -316,9 +349,28 @@ public sealed class UpdatePricingRequestCommandHandler
         pricingRequest.Quantity = request.Quantity ?? pricingRequest.Quantity;
         pricingRequest.RequestedPrice = request.RequestedPrice ?? pricingRequest.RequestedPrice;
         pricingRequest.Message = request.Message ?? pricingRequest.Message;
+
+        var previous = pricingRequest.Status;
         pricingRequest.Status = request.Status ?? pricingRequest.Status;
 
         await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Best-effort user email when the edit changed the status.
+        if (request.Status is not null
+            && !string.Equals(previous, pricingRequest.Status, StringComparison.OrdinalIgnoreCase))
+        {
+            await RequestStatusEmail.TrySendAsync(
+                _emailService,
+                _logger,
+                pricingRequest.Email,
+                $"Your bulk quote request is now {pricingRequest.Status}",
+                RequestStatusEmail.PricingHtml(
+                    pricingRequest.CustomerName,
+                    pricingRequest.Product,
+                    pricingRequest.Quantity,
+                    pricingRequest.Status),
+                cancellationToken);
+        }
 
         return Result.Success(pricingRequest.ToDto());
     }

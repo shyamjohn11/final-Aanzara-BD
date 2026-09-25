@@ -53,6 +53,7 @@ public sealed class CategoryImagesController : ApiControllerBase
 
     /// <summary>Promotes an image to primary, demoting the incumbent.</summary>
     [HttpPost("{categoryImageId:guid}/primary")]
+    [HasPermission(Permissions.Category.Update)]
     [ProducesResponseType(typeof(CategoryImageResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CategoryImageResponse>> SetPrimary(
@@ -77,6 +78,7 @@ public sealed class CategoryImagesController : ApiControllerBase
     /// Deletes an image. No payload. Promotes the next image if this one was primary.
     /// </summary>
     [HttpDelete("{categoryImageId:guid}")]
+    [HasPermission(Permissions.Category.Delete)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(Guid categoryImageId, CancellationToken cancellationToken)

@@ -1,4 +1,5 @@
 using ECommercePlatform.Application.Common.Abstractions;
+using ECommercePlatform.Application.Common.Validation;
 using Microsoft.Extensions.Options;
 
 namespace ECommercePlatform.Infrastructure.Storage;
@@ -13,30 +14,58 @@ public sealed class LocalFileStorageService : IFileStorageService
     public async Task<StoredFile> SaveAsync(
         FileUpload file, string subFolder, CancellationToken cancellationToken)
     {
-        var folder = Path.Combine(_options.RootPath, subFolder);
+        // Only allow known leaf folders — never accept path segments from callers.
+        var safeFolder = Path.GetFileName(subFolder);
+        if (string.IsNullOrWhiteSpace(safeFolder) || safeFolder != subFolder)
+        {
+            throw new InvalidOperationException("Invalid upload sub-folder.");
+        }
+
+        var folder = Path.GetFullPath(Path.Combine(_options.RootPath, safeFolder));
+        var root = Path.GetFullPath(_options.RootPath);
+        if (!folder.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Upload path escaped the storage root.");
+        }
+
         Directory.CreateDirectory(folder);
 
-        // GUID filename avoids collisions and sidesteps anything unsafe in the
-        // caller-supplied name; the original extension is kept as a content hint.
-        var extension = Path.GetExtension(file.FileName);
+        // Server-generated name only. Extension comes from validated content-type
+        // (or an allowlisted original extension), never from a free-form client name.
+        var extension = ImageFileValidator.IsAllowedExtension(file.FileName)
+            ? Path.GetExtension(file.FileName)
+            : ImageFileValidator.SafeExtensionFor(file.ContentType);
+        if (!ImageFileValidator.AllowedExtensions.Contains(extension))
+        {
+            throw new InvalidOperationException("Disallowed file extension.");
+        }
+
         var storedName = $"{Guid.NewGuid()}{extension}";
-                var fullPath = Path.GetFullPath(Path.Combine(folder, storedName));
+        var fullPath = Path.GetFullPath(Path.Combine(folder, storedName));
+        if (!fullPath.StartsWith(folder, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Upload path escaped the storage root.");
+        }
 
         await using (var destination = File.Create(fullPath))
         {
             await file.Content.CopyToAsync(destination, cancellationToken);
         }
 
-        var url = $"{_options.PublicBaseUrl.TrimEnd('/')}/{subFolder}/{storedName}";
+        var url = $"{_options.PublicBaseUrl.TrimEnd('/')}/{safeFolder}/{storedName}";
 
-        return new StoredFile(fullPath, storedName, url, file.Length, file.ContentType);
+        return new StoredFile(fullPath, storedName, url, file.Length, file.ContentType ?? "application/octet-stream");
     }
 
     public Task DeleteAsync(string filePath, CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
+        if (string.IsNullOrWhiteSpace(filePath)) return Task.CompletedTask;
+
+        var full = Path.GetFullPath(filePath);
+        var root = Path.GetFullPath(_options.RootPath);
+        if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase) && File.Exists(full))
         {
-            File.Delete(filePath);
+            File.Delete(full);
         }
 
         return Task.CompletedTask;
@@ -61,32 +90,62 @@ public sealed class LocalFileStorageService : IFileStorageService
             return null;
         }
 
-        var basePrefix = $"{_options.PublicBaseUrl.TrimEnd('/')}/";
-
-        if (!url.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase))
+        // Reject backslashes and encoded traversal before combining paths.
+        if (url.Contains('\\'))
         {
-            // Not a URL this service produced (e.g. left over from a different
-            // storage backend, or an external http URL); nothing we can resolve.
-            // Same-host relative URLs resolve against RootPath, using the path
-            // segment from PublicBaseUrl ("/uploads/…" in the default config).
+            return null;
+        }
+
+        // Absolute URL (legacy PublicBaseUrl): keep only the path. Host no
+        // longer matters — /uploads/... is rewritten/served same-origin.
+        if (url.Contains("://", StringComparison.Ordinal))
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var absUri))
+            {
+                return null;
+            }
+
+            url = absUri.AbsolutePath;
+        }
+
+        var basePrefix = $"{_options.PublicBaseUrl.TrimEnd('/')}/";
+        string relative;
+
+        if (url.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            relative = url[basePrefix.Length..];
+        }
+        else
+        {
             var basePath = Uri.TryCreate(
-                    _options.PublicBaseUrl, UriKind.Absolute, out var baseUri)
-                ? baseUri.AbsolutePath.Trim('/')
+                    _options.PublicBaseUrl, UriKind.Absolute, out var baseUri2)
+                ? baseUri2.AbsolutePath.Trim('/')
                 : "uploads";
 
             var relativePrefix = $"/{basePath}/";
-
             if (string.IsNullOrWhiteSpace(basePath)
                 || !url.StartsWith(relativePrefix, StringComparison.OrdinalIgnoreCase))
             {
                 return null;
             }
 
-            var appRelative = url[relativePrefix.Length..].Replace('/', Path.DirectorySeparatorChar);
-            return Path.Combine(_options.RootPath, appRelative);
+            relative = url[relativePrefix.Length..];
         }
 
-        var relative = url[basePrefix.Length..].Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(_options.RootPath, relative);
+        // Normalize and confirm the result stays under RootPath (no ../ escape).
+        var appRelative = relative.Replace('/', Path.DirectorySeparatorChar);
+        if (appRelative.Contains(".."))
+        {
+            return null;
+        }
+
+        var root = Path.GetFullPath(_options.RootPath);
+        var candidate = Path.GetFullPath(Path.Combine(root, appRelative));
+        if (!candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return candidate;
     }
 }

@@ -1604,11 +1604,18 @@ namespace ECommercePlatform.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AppliedCouponId");
 
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_Orders_CreatedAt");
+
                     b.HasIndex("DealerId");
 
                     b.HasIndex("FulfilledByWarehouseId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("OrderStatus")
+                        .HasDatabaseName("IX_Orders_OrderStatus");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("IX_Orders_UserId_CreatedAt");
 
                     b.ToTable("Orders", (string)null);
                 });
@@ -2021,6 +2028,10 @@ namespace ECommercePlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasColumnName("sku");
 
+                    b.Property<string>("Specification")
+                        .HasColumnType("text")
+                        .HasColumnName("specification");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2228,6 +2239,10 @@ namespace ECommercePlatform.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(200)")
                         .HasColumnName("customerName");
 
+                    b.Property<bool>("IsVerifiedPurchase")
+                        .HasColumnType("bit")
+                        .HasColumnName("isVerifiedPurchase");
+
                     b.Property<string>("ProductName")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -2247,6 +2262,10 @@ namespace ECommercePlatform.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset")
                         .HasColumnName("updatedAt");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("userId");
 
                     b.HasKey("Id");
 

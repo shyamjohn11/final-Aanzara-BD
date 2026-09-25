@@ -1,5 +1,6 @@
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
+using ECommercePlatform.Application.Common.Validation;
 using ECommercePlatform.Application.Features.Catalog.Dtos;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
@@ -48,10 +49,17 @@ public sealed class SetBrandLogoCommandHandler
                 "catalog.brand_image_required", "An image file is required."));
         }
 
-        if (!request.File.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        var validationError = await ImageFileValidator.ValidateAsync(
+            request.File.Content,
+            request.File.FileName,
+            request.File.ContentType,
+            request.File.Length,
+            5L * 1024 * 1024,
+            cancellationToken);
+        if (validationError is not null)
         {
             return Result.Failure<BrandResponse>(Error.Validation(
-                "catalog.brand_image_invalid_type", "Only image files are accepted."));
+                "catalog.brand_image_invalid_type", validationError));
         }
 
         var stored = await _fileStorage.SaveAsync(request.File, ImageSubFolder, cancellationToken);

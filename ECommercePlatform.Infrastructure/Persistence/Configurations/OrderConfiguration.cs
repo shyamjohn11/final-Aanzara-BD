@@ -137,6 +137,16 @@ namespace ECommercePlatform.Infrastructure.Configurations
                 .WithOne(x => x.Order)
                 .HasForeignKey(x => x.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Search / list hot paths: status filter, CreatedAt DESC ordering,
+            // and per-user order history. Without these every admin/customer
+            // order page does a clustered index scan.
+            builder.HasIndex(x => x.OrderStatus)
+                .HasDatabaseName("IX_Orders_OrderStatus");
+            builder.HasIndex(x => x.CreatedAt)
+                .HasDatabaseName("IX_Orders_CreatedAt");
+            builder.HasIndex(x => new { x.UserId, x.CreatedAt })
+                .HasDatabaseName("IX_Orders_UserId_CreatedAt");
         }
     }
 }
