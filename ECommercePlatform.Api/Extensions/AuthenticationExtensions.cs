@@ -38,7 +38,20 @@ public static class AuthenticationExtensions
 
                         return Task.CompletedTask;
                     },
-                    OnTokenValidated = ValidateSessionAsync
+                    OnTokenValidated = ValidateSessionAsync,
+                    // HttpOnly cookie fallback when the Authorization header is absent
+                    // (fetch/axios with credentials after login).
+                    OnMessageReceived = context =>
+                    {
+                        if (string.IsNullOrEmpty(context.Token)
+                            && context.Request.Cookies.TryGetValue(AuthCookies.AccessCookieName, out var cookieToken)
+                            && !string.IsNullOrWhiteSpace(cookieToken))
+                        {
+                            context.Token = cookieToken;
+                        }
+
+                        return Task.CompletedTask;
+                    }
                 };
             });
 

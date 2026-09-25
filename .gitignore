@@ -1,8 +1,12 @@
 # Secrets
 appsettings.Development.json
 appsettings.Local.json
+appsettings.Production.json
+secrets.json
 .env
 .env.*
+*.user
+users.json
 
 # Build
 bin/
@@ -18,9 +22,11 @@ obj/
 
 # Logs
 *.log
+logs/
 
 # OS
 .DS_Store
-Thumbs.db   
+Thumbs.db
 
-.gitignore
+# Local uploads (may contain user content)
+Uploads/

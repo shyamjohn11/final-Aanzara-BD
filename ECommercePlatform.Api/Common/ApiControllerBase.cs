@@ -23,6 +23,17 @@ public abstract class ApiControllerBase : ControllerBase
         HttpContext.Connection.RemoteIpAddress?.ToString(),
         HttpContext.Request.Headers.UserAgent.ToString());
 
+    /// <summary>
+    /// True when the browser went away mid-request (navigation, tab close):
+    /// the request-aborted token is signaled. Use it as a catch filter for
+    /// <see cref="OperationCanceledException"/> so a disconnect answers 499
+    /// inside user code instead of escaping to the framework — escaping pops
+    /// the Visual Studio debugger even though the pipeline would handle it
+    /// quietly. Any cancellation that is NOT a disconnect still propagates.
+    /// </summary>
+    protected bool ClientWentAway()
+        => HttpContext.RequestAborted.IsCancellationRequested;
+
     protected ActionResult ToProblem(Error error)
     {
         var statusCode = error.Type.ToStatusCode();

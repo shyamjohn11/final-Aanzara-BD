@@ -1,5 +1,6 @@
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
+using ECommercePlatform.Application.Common.Validation;
 using ECommercePlatform.Application.Features.Catalog;
 using ECommercePlatform.Application.Features.Catalog.Dtos;
 using ECommercePlatform.Domain.Entities;
@@ -49,10 +50,18 @@ public sealed class SetSubCategoryImageCommandHandler
                 "catalog.subcategory_image_required", "An image file is required."));
         }
 
-        if (!request.File.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        var maxBytes = 5L * 1024 * 1024;
+        var validationError = await ImageFileValidator.ValidateAsync(
+            request.File.Content,
+            request.File.FileName,
+            request.File.ContentType,
+            request.File.Length,
+            maxBytes,
+            cancellationToken);
+        if (validationError is not null)
         {
             return Result.Failure<SubCategoryResponse>(Error.Validation(
-                "catalog.subcategory_image_invalid_type", "Only image files are accepted."));
+                "catalog.subcategory_image_invalid_type", validationError));
         }
 
         var stored = await _fileStorage.SaveAsync(request.File, ImageSubFolder, cancellationToken);

@@ -89,7 +89,13 @@ public sealed class AuthController : ApiControllerBase
         try
         {
             var result = await Sender.Send(command with { Client = Client }, cancellationToken);
-            return ToResponse(result);
+            if (result.IsFailure)
+            {
+                return ToProblem(result.Error!);
+            }
+
+            AuthCookies.SetAuthCookies(HttpContext, result.Value);
+            return Ok(result.Value);
         }
         finally
         {
@@ -100,21 +106,57 @@ public sealed class AuthController : ApiControllerBase
     /// <summary>
     /// Exchanges a refresh token for a fresh token pair. The submitted refresh
     /// token is single-use — it is revoked as soon as the replacement is issued.
+    /// Accepts the token from the body or the HttpOnly refresh cookie.
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
     [EnableRateLimiting(ApiExtensions.AuthRateLimitPolicy)]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<AuthResponse>> Refresh(
-        [FromBody] RefreshTokenCommand command, CancellationToken cancellationToken)
+        [FromBody] RefreshTokenCommand? command, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Refresh action started.");
 
         try
         {
-            var result = await Sender.Send(command with { Client = Client }, cancellationToken);
+            var refreshToken = command?.RefreshToken;
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                refreshToken = Request.Cookies[AuthCookies.RefreshCookieName];
+            }
 
-            return ToResponse(result);
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                // No refresh token presented at all: any session cookies the
+                // browser still holds are stale. Drop them so the edge guard
+                // stops bouncing /login back into the app.
+                AuthCookies.ClearAuthCookies(HttpContext);
+                return ToProblem(AuthErrors.InvalidRefreshToken);
+            }
+
+            var effective = (command is null
+                    ? new RefreshTokenCommand()
+                    : command) with { RefreshToken = refreshToken };
+
+            var result = await Sender.Send(effective with { Client = Client }, cancellationToken);
+            if (result.IsFailure)
+            {
+                // The session is truly dead (revoked, expired, rotated, or
+                // unknown token). Clear the HttpOnly cookies: without this the
+                // edge guard keeps seeing aanzara_session=1 and bounces
+                // /login back into the app, so the user can never sign in
+                // again. Only clear for token failures, never for transient
+                // errors, so a hiccup cannot log a live session out.
+                if (result.Error == AuthErrors.InvalidRefreshToken)
+                {
+                    AuthCookies.ClearAuthCookies(HttpContext);
+                }
+
+                return ToProblem(result.Error!);
+            }
+
+            AuthCookies.SetAuthCookies(HttpContext, result.Value);
+            return Ok(result.Value);
         }
         finally
         {
@@ -133,6 +175,10 @@ public sealed class AuthController : ApiControllerBase
         {
             if (_currentUser.UserId is not { } userId)
             {
+                // No usable identity (stale/expired token that still passed
+                // the pipeline): drop the cookies anyway so the client is
+                // not trapped behind the edge guard.
+                AuthCookies.ClearAuthCookies(HttpContext);
                 return ToProblem(AuthErrors.InvalidCredentials);
             }
 
@@ -142,6 +188,7 @@ public sealed class AuthController : ApiControllerBase
                     new LogoutCommand { UserId = userId, SessionId = _currentUser.SessionId },
                     cancellationToken);
 
+                AuthCookies.ClearAuthCookies(HttpContext);
                 return ToNoContent(result);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || HttpContext.RequestAborted.IsCancellationRequested)
@@ -150,6 +197,7 @@ public sealed class AuthController : ApiControllerBase
                 // The handler already revoked the session with CancellationToken.None,
                 // so we can safely report success without a body.
                 _logger.LogDebug("Logout request was canceled by the client — session already revoked, returning 204.");
+                AuthCookies.ClearAuthCookies(HttpContext);
                 return NoContent();
             }
         }

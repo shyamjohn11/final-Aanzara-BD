@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace ECommercePlatform.Api.Controllers;
 using ECommercePlatform.Application.Features.Cart.AddToCart;
+using ECommercePlatform.Application.Features.Cart.ApplyCoupon;
 using ECommercePlatform.Application.Features.Cart.ClearCart;
 using ECommercePlatform.Application.Features.Cart.RemoveCartItem;
 using ECommercePlatform.Application.Features.Cart.UpdateCartQuantity;
@@ -53,6 +54,14 @@ public sealed class CartController : ApiControllerBase
 
             return ToResponse(result);
         }
+        catch (OperationCanceledException) when (ClientWentAway())
+        {
+            // Browser navigated away mid-request (499 = Client Closed
+            // Request). Handled here in user code so the debugger does
+            // not break on the cancellation; the edge already dropped
+            // the connection, so nothing is written back.
+            return StatusCode(499);
+        }
         finally
         {
             _logger.LogInformation("Get action finished.");
@@ -71,10 +80,18 @@ public async Task<ActionResult<CartItemResponse>> AddItem(
         return ToProblem(CartErrors.NotAuthenticated);
     }
 
-    var result = await Sender.Send(
-        new AddToCartCommand(userId, request.ProductId, request.Quantity), cancellationToken);
+    try
+    {
+        var result = await Sender.Send(
+            new AddToCartCommand(userId, request.ProductId, request.Quantity), cancellationToken);
 
-    return ToResponse(result);
+        return ToResponse(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
 }
 
 [HttpPatch("items/{cartItemId:guid}")]
@@ -89,10 +106,18 @@ public async Task<ActionResult<CartItemResponse>> UpdateItemQuantity(
         return ToProblem(CartErrors.NotAuthenticated);
     }
 
-    var result = await Sender.Send(
-        new UpdateCartQuantityCommand(userId, cartItemId, request.Quantity), cancellationToken);
+    try
+    {
+        var result = await Sender.Send(
+            new UpdateCartQuantityCommand(userId, cartItemId, request.Quantity), cancellationToken);
 
-    return ToResponse(result);
+        return ToResponse(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
 }
 
 /// <summary>
@@ -109,10 +134,18 @@ public async Task<ActionResult> RemoveItem(Guid cartItemId, CancellationToken ca
         return ToProblem(CartErrors.NotAuthenticated);
     }
 
-    var result = await Sender.Send(
-        new RemoveCartItemCommand(userId, cartItemId), cancellationToken);
+    try
+    {
+        var result = await Sender.Send(
+            new RemoveCartItemCommand(userId, cartItemId), cancellationToken);
 
-    return ToNoContent(result);
+        return ToNoContent(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
 }
 
 /// <summary>Empties the caller's cart. The cart row itself is kept for reuse.</summary>
@@ -125,8 +158,71 @@ public async Task<ActionResult> Clear(CancellationToken cancellationToken)
         return ToProblem(CartErrors.NotAuthenticated);
     }
 
-    var result = await Sender.Send(new ClearCartCommand(userId), cancellationToken);
+    try
+    {
+        var result = await Sender.Send(new ClearCartCommand(userId), cancellationToken);
 
-    return ToNoContent(result);
+        return ToNoContent(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
+}
+
+/// <summary>
+/// Applies a coupon code to the caller's cart and returns the recalculated summary
+/// (discount + total). Invalid/expired/min-order codes fail with a problem detail.
+/// </summary>
+[HttpPost("coupon")]
+[ProducesResponseType(typeof(CartSummaryResponse), StatusCodes.Status200OK)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+public async Task<ActionResult<CartSummaryResponse>> ApplyCoupon(
+    [FromBody] ApplyCouponRequest request, CancellationToken cancellationToken)
+{
+    if (_currentUser.UserId is not { } userId)
+    {
+        return ToProblem(CartErrors.NotAuthenticated);
+    }
+
+    try
+    {
+        var result = await Sender.Send(
+            new ApplyCouponCommand(userId, request?.Code ?? string.Empty), cancellationToken);
+
+        return ToResponse(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
+}
+
+/// <summary>Clears any coupon on the caller's cart and returns the recalculated summary.</summary>
+[HttpDelete("coupon")]
+[ProducesResponseType(typeof(CartSummaryResponse), StatusCodes.Status200OK)]
+public async Task<ActionResult<CartSummaryResponse>> RemoveCoupon(CancellationToken cancellationToken)
+{
+    if (_currentUser.UserId is not { } userId)
+    {
+        return ToProblem(CartErrors.NotAuthenticated);
+    }
+
+    try
+    {
+        var result = await Sender.Send(new RemoveCouponCommand(userId), cancellationToken);
+
+        return ToResponse(result);
+    }
+    catch (OperationCanceledException) when (ClientWentAway())
+    {
+        // Browser navigated away mid-request (499 = Client Closed Request).
+        return StatusCode(499);
+    }
 }
 }
+
+public sealed record ApplyCouponRequest(string? Code);

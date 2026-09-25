@@ -1,5 +1,6 @@
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Application.Common.Messaging;
+using ECommercePlatform.Application.Common.Validation;
 using ECommercePlatform.Application.Features.Catalog.Dtos;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
@@ -46,10 +47,18 @@ public sealed class AddProductImageCommandHandler
                 "catalog.product_image_required", "An image file is required."));
         }
 
-        if (!request.File.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        var maxBytes = 5L * 1024 * 1024;
+        var validationError = await ImageFileValidator.ValidateAsync(
+            request.File.Content,
+            request.File.FileName,
+            request.File.ContentType,
+            request.File.Length,
+            maxBytes,
+            cancellationToken);
+        if (validationError is not null)
         {
             return Result.Failure<ProductImageResponse>(Error.Validation(
-                "catalog.product_image_invalid_type", "Only image files are accepted."));
+                "catalog.product_image_invalid_type", validationError));
         }
 
         var existing = await _images.GetForProductAsync(request.ProductId, cancellationToken);

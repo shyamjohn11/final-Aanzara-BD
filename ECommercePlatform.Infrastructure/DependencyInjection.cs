@@ -104,17 +104,29 @@ public static class DependencyInjection
 services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<IPermissionService, PermissionService>();
 
+        services.AddOptions<ECommercePlatform.Infrastructure.Payments.PaymentVerificationOptions>()
+            .Bind(configuration.GetSection(ECommercePlatform.Infrastructure.Payments.PaymentVerificationOptions.SectionName));
+        services.AddScoped<IPaymentVerificationService, ECommercePlatform.Infrastructure.Payments.PaymentVerificationService>();
+
         services.AddSingleton<IPassphraseHasher, PassphraseHasher>();
         services.AddSingleton<ITokenService, TokenService>();
         services.AddSingleton<IOtpStore, InMemoryOtpStore>();
-        services.AddScoped<IEmailService, SmtpEmailService>();
+        // Email: handlers resolve IEmailService (outbox enqueue — non-blocking);
+        // the BackgroundService drains via SmtpEmailService directly.
+        services.AddSingleton<EmailOutboxQueue>();
+        services.AddScoped<SmtpEmailService>();
+        services.AddScoped<IEmailService, OutboxEmailService>();
         services.AddScoped<IWishlistRepository, WishlistRepository>();
+
+        services.AddMemoryCache();
 
         services.AddScoped<DatabaseInitializer>();
         services.AddHostedService<SessionCleanupService>();
+        services.AddHostedService<EmailOutboxService>();
         services.AddScoped<IRoleService, RoleService>();
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<ICouponRepository, CouponRepository>();
         services.AddScoped<ITaxRuleRepository, TaxRuleRepository>();
         services.AddScoped<IDeliveryRuleRepository, DeliveryRuleRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();

@@ -52,7 +52,7 @@ public sealed class GetCategoryImageFileByIdQueryHandler
         return extension switch
         {
             ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
+            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
             ".webp" => "image/webp",
             ".gif" => "image/gif",
             _ => "application/octet-stream"

@@ -15,7 +15,7 @@ public sealed class GetProductByIdQueryHandler
     public async Task<Result<ProductResponse>> Handle(
         GetProductByIdQuery request, CancellationToken cancellationToken)
     {
-        var product = await _products.GetByIdAsync(request.ProductId, cancellationToken);
+            var product = await _products.GetByIdAsync(request.ProductId, cancellationToken);
 
         return product is null
             ? Result.Failure<ProductResponse>(CatalogErrors.ProductNotFound)

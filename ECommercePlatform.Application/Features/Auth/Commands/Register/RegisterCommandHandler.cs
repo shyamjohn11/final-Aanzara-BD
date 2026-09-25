@@ -3,6 +3,7 @@ using ECommercePlatform.Application.Common.Messaging;
 using ECommercePlatform.Application.Features.Admin.Notifications;
 using ECommercePlatform.Application.Features.Auth.Dtos;
 using ECommercePlatform.Application.Features.Auth.Sessions;
+using ECommercePlatform.Domain.Constants;
 using ECommercePlatform.Domain.Entities;
 using ECommercePlatform.Domain.Errors;
 using Microsoft.Extensions.Logging;
@@ -14,6 +15,7 @@ public sealed class RegisterCommandHandler : ICommandHandler<RegisterCommand, Re
     private readonly IUserRepository _users;
     private readonly IPassphraseHasher _hasher;
     private readonly ISessionManager _sessionManager;
+    private readonly IRoleRepository _roles;
     private readonly IAdminRepository<Notification> _notifications;
     private readonly IUnitOfWork _unitOfWork;
     private readonly TimeProvider _timeProvider;
@@ -23,6 +25,7 @@ public sealed class RegisterCommandHandler : ICommandHandler<RegisterCommand, Re
         IUserRepository users,
         IPassphraseHasher hasher,
         ISessionManager sessionManager,
+        IRoleRepository roles,
         IAdminRepository<Notification> notifications,
         IUnitOfWork unitOfWork,
         TimeProvider timeProvider,
@@ -31,6 +34,7 @@ public sealed class RegisterCommandHandler : ICommandHandler<RegisterCommand, Re
         _users = users;
         _hasher = hasher;
         _sessionManager = sessionManager;
+        _roles = roles;
         _notifications = notifications;
         _unitOfWork = unitOfWork;
         _timeProvider = timeProvider;
@@ -65,6 +69,14 @@ public sealed class RegisterCommandHandler : ICommandHandler<RegisterCommand, Re
 
         await _users.AddAsync(newUser, cancellationToken);
 
+        // Self-registration always lands in the Customer role (same as
+        // UserService.CreateNewUserAsync). Commit before issuing the session
+        // so the role lookup inside IssueAsync sees the mapping and the
+        // JWT/response carry the role. This commit is also what enforces the
+        // unique Email index.
+        await AssignCustomerRoleAsync(newUser.UserId, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
         var response = await _sessionManager.IssueAsync(newUser, request.Client, cancellationToken);
 
         NotificationEmitter.Emit(
@@ -74,12 +86,32 @@ public sealed class RegisterCommandHandler : ICommandHandler<RegisterCommand, Re
             newUser.Email,
             "/admin/users");
 
-        // A unique index on Email is the real guard: the check above races, this
-        // commit is what actually enforces it.
+        // Commits the session row (and the notification).
         await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("New user {UserId} registered and signed in.", newUser.UserId);
 
         return Result.Success(response);
+    }
+
+    /// <summary>
+    /// Finds the Customer role and maps it to the new user. If the role row
+    /// does not exist yet, the assignment is skipped (same policy as
+    /// UserService); the role cookie and client role then fall back to
+    /// "customer".
+    /// </summary>
+    private async Task AssignCustomerRoleAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var allRoles = await _roles.GetAllAsync(cancellationToken);
+        var customerRole = allRoles.FirstOrDefault(role => role.RoleName == Roles.Customer);
+
+        if (customerRole is not null)
+        {
+            _roles.AddAdminUserRole(userId, customerRole.RoleId);
+        }
+        else
+        {
+            _logger.LogWarning("Registration for user {UserId} skipped role assignment: Customer role not found.", userId);
+        }
     }
 }

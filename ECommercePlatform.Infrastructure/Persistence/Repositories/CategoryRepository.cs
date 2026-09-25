@@ -1,14 +1,23 @@
 using ECommercePlatform.Application.Common.Abstractions;
 using ECommercePlatform.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ECommercePlatform.Infrastructure.Persistence.Repositories;
 
 public sealed class CategoryRepository : ICategoryRepository
 {
-    private readonly ApplicationDbContext _db;
+    private static readonly TimeSpan TreeCacheDuration = TimeSpan.FromMinutes(5);
+    private const string TreeCacheKey = "category-tree:{0}";
 
-    public CategoryRepository(ApplicationDbContext db) => _db = db;
+    private readonly ApplicationDbContext _db;
+    private readonly IMemoryCache _cache;
+
+    public CategoryRepository(ApplicationDbContext db, IMemoryCache cache)
+    {
+        _db = db;
+        _cache = cache;
+    }
 
     public Task<Category?> GetByIdAsync(Guid categoryId, CancellationToken cancellationToken)
         => _db.Categories.FirstOrDefaultAsync(c => c.CategoryId == categoryId, cancellationToken);
@@ -67,6 +76,12 @@ public sealed class CategoryRepository : ICategoryRepository
     public async Task<IReadOnlyList<CategoryTreeNode>> GetTreeAsync(
         bool activeOnly, CancellationToken cancellationToken)
     {
+        var cacheKey = string.Format(TreeCacheKey, activeOnly);
+        if (_cache.TryGetValue(cacheKey, out IReadOnlyList<CategoryTreeNode>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
         var query = _db.Categories.AsNoTracking().AsQueryable();
 
         if (activeOnly)
@@ -77,7 +92,7 @@ public sealed class CategoryRepository : ICategoryRepository
         // One round trip for the whole tree. Projecting the children inline lets
         // EF translate the product counts into correlated sub-queries instead of
         // us issuing a query per category.
-        return await query
+        var tree = await query
             .OrderBy(c => c.CategoryName)
             .Select(c => new CategoryTreeNode(
                 c.CategoryId,
@@ -102,6 +117,10 @@ public sealed class CategoryRepository : ICategoryRepository
                         s.Products.Count(p => !activeOnly || p.Status == ProductStatus.Active)))
                     .ToList()))
             .ToListAsync(cancellationToken);
+
+        IReadOnlyList<CategoryTreeNode> result = tree;
+        _cache.Set(cacheKey, result, TreeCacheDuration);
+        return result;
     }
 
     public async Task RefreshHasSubCategoryAsync(Guid categoryId, CancellationToken cancellationToken)
